@@ -1,3 +1,5 @@
+import UserNotifications
+import ServiceManagement
 import Foundation
 import IOBluetooth
 import SwiftUI
@@ -68,6 +70,13 @@ final class EarbudsController: ObservableObject {
 
     private var lastMenuBarBatteryUpdate: Date?
     private var batteryTimer: Timer?
+    // Auto-Connect & Notifications
+    @Published var autoConnect: Bool = UserDefaults.standard.object(forKey: "autoConnectEnabled") != nil ? UserDefaults.standard.bool(forKey: "autoConnectEnabled") : true
+    @Published var notifyLowBattery: Bool = UserDefaults.standard.object(forKey: "notifyLowBatteryEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyLowBatteryEnabled") : true
+
+    private var connectNotificationRef: IOBluetoothUserNotification?
+    private var hasNotifiedLowBattery = false
+
     private let menuBarUpdateInterval: TimeInterval = 300 // 5 minutes
 
     private let transport = RFCOMMTransport()
@@ -79,6 +88,8 @@ final class EarbudsController: ObservableObject {
         transport.onData = { [weak self] bytes in self?.didReceive(bytes) }
         transport.onClose = { [weak self] message in self?.didClose(message) }
         refreshDevices()
+        setupAutoConnectObserver()
+        requestNotificationPermission()
     }
 
     // MARK: Discovery
@@ -115,6 +126,7 @@ final class EarbudsController: ObservableObject {
         link = .idle
         // Clean up session state so reconnection has a clean slate
         battery = BatteryInfo()
+        hasNotifiedLowBattery = false
         ringing = (false, false)
         refreshDevices()
     }
@@ -149,7 +161,116 @@ final class EarbudsController: ObservableObject {
         }
     }
 
-    // MARK: - Menu Bar Battery Ring
+        // MARK: - Launch at Login
+    @Published var launchAtLogin: Bool = {
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled
+        }
+        return false
+    }()
+
+    func setLaunchAtLogin(_ enabled: Bool) {
+        if #available(macOS 13.0, *) {
+            do {
+                if enabled {
+                    try SMAppService.mainApp.register()
+                } else {
+                    try SMAppService.mainApp.unregister()
+                }
+                launchAtLogin = (SMAppService.mainApp.status == .enabled)
+            } catch {
+                NSLog("Failed to update launch at login: \(error)")
+                launchAtLogin = (SMAppService.mainApp.status == .enabled)
+            }
+        }
+    }
+
+    // MARK: - Auto-Connect & Notifications
+
+    func setAutoConnect(_ enabled: Bool) {
+        autoConnect = enabled
+        UserDefaults.standard.set(enabled, forKey: "autoConnectEnabled")
+        if enabled {
+            setupAutoConnectObserver()
+        } else {
+            connectNotificationRef?.unregister()
+            connectNotificationRef = nil
+        }
+    }
+
+    func setNotifyLowBattery(_ enabled: Bool) {
+        notifyLowBattery = enabled
+        UserDefaults.standard.set(enabled, forKey: "notifyLowBatteryEnabled")
+        if enabled {
+            requestNotificationPermission()
+        }
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    private func setupAutoConnectObserver() {
+        guard autoConnect else { return }
+        connectNotificationRef?.unregister()
+        connectNotificationRef = IOBluetoothDevice.register(forConnectNotifications: self, selector: #selector(bluetoothDeviceConnected(_:device:)))
+    }
+
+    @objc nonisolated private func bluetoothDeviceConnected(_ notification: IOBluetoothUserNotification, device: IOBluetoothDevice) {
+        Task { @MainActor in
+            guard self.autoConnect, self.link == .idle else { return }
+            guard let name = device.name, DeviceCatalog.looksLikeSupportedDevice(name: name) else { return }
+            if let addr = device.addressString {
+                self.selectedAddress = addr
+                // Small delay to allow macOS to finish audio handshaking
+                try? await Task.sleep(nanoseconds: 800_000_000)
+                if self.link == .idle && device.isConnected() {
+                    self.connect()
+                }
+            }
+        }
+    }
+
+    private func checkLowBatteryNotifications(_ info: BatteryInfo) {
+        guard notifyLowBattery else { return }
+        var lowCells: [String] = []
+
+        if let s = info.stereo, s.level <= 15 && !s.charging {
+            lowCells.append("Headphones (\(s.level)%)")
+        } else {
+            if let l = info.left, l.level <= 15 && !l.charging {
+                lowCells.append("Left bud (\(l.level)%)")
+            }
+            if let r = info.right, r.level <= 15 && !r.charging {
+                lowCells.append("Right bud (\(r.level)%)")
+            }
+        }
+
+        if !lowCells.isEmpty {
+            if !hasNotifiedLowBattery {
+                hasNotifiedLowBattery = true
+                sendLowBatteryAlert(details: lowCells.joined(separator: ", "))
+            }
+        } else {
+            // Reset trigger once battery is charged above 20%
+            let minLvl = [info.stereo?.level, info.left?.level, info.right?.level].compactMap { $0 }.min() ?? 100
+            if minLvl > 20 {
+                hasNotifiedLowBattery = false
+            }
+        }
+    }
+
+    private func sendLowBatteryAlert(details: String) {
+        let content = UNMutableNotificationContent()
+        content.title = "Battery Low · \(deviceName.isEmpty ? "Ear-Desk" : deviceName)"
+        content.body = "\(details) battery is running low. Please place in charging case."
+        content.sound = .default
+
+        let request = UNNotificationRequest(identifier: "EarDeskLowBattery", content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+// MARK: - Menu Bar Battery Ring
 
     private func startBatteryTimer() {
         batteryTimer?.invalidate()
@@ -256,6 +377,7 @@ final class EarbudsController: ObservableObject {
         case let c where Command.batteryResponses.contains(c):
             battery = Messages.parseBattery(p)
             checkMenuBarBatteryUpdate()
+            checkLowBatteryNotifications(battery)
         case let c where Command.ancResponses.contains(c):
             if let m = Messages.parseANC(p) { anc = m }
         case let c where Command.eqResponses.contains(c):

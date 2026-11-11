@@ -31,7 +31,7 @@ file "$APP/Contents/MacOS/EarDesk"
 if command -v python3 &>/dev/null; then
     python3 -c '
 import os, subprocess, time
-dmg_path = "build/Ear-Desk-macOS-v1.2.2.dmg"
+dmg_path = "build/Ear-Desk-macOS-v1.3.0.dmg"
 temp_dmg = "build/temp_installer.dmg"
 vol_name = "Ear-Desk"
 src_app = "build/Ear-Desk.app"

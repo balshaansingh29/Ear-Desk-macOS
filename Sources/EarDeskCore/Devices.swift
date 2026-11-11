@@ -56,9 +56,9 @@ public enum DeviceCatalog {
     static let headphoneRingBases: Set<String> = ["B170", "B164", "B175", "B186", "B192"]
 
     static let diracPresets: [(name: String, wire: UInt8)] =
-        [("Dirac OPTEO", 0), ("Pop", 3), ("Rock", 1), ("Classical", 5), ("Electronic", 2), ("Enhance Vocals", 4)]
+        [("Dirac OPTEO", 0), ("Pop", 3), ("Rock", 1), ("Classical", 5), ("Custom", 6), ("Electronic", 2), ("Enhance Vocals", 4)]
     static let genrePresets: [(name: String, wire: UInt8)] =
-        [("Pop", 3), ("Rock", 1), ("Electronic", 2), ("Classical", 5), ("Enhance Vocals", 4)]
+        [("Pop", 3), ("Rock", 1), ("Electronic", 2), ("Classical", 5), ("Custom", 6), ("Enhance Vocals", 4)]
     static let diracBases: Set<String> = ["B172", "B195"]
 
     // (base, marketing name, ancLevel from ear_config_file.json)

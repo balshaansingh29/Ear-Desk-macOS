@@ -125,17 +125,121 @@ struct NothingToggleStyle: ToggleStyle {
 
 struct ContentView: View {
     @EnvironmentObject var ctl: EarbudsController
+    @AppStorage("hasPromptedLaunchAtLogin") private var hasPromptedLaunchAtLogin: Bool = false
+    @State private var showPromptSheet: Bool = false
 
     var body: some View {
-        Group {
+        ZStack {
             if ctl.link == .connected {
                 ControlsView()
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.98)).combined(with: .offset(y: 8)),
+                            removal: .opacity.combined(with: .scale(scale: 1.02))
+                        )
+                    )
             } else {
                 ConnectView()
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 1.02)),
+                            removal: .opacity.combined(with: .scale(scale: 0.98)).combined(with: .offset(y: -8))
+                        )
+                    )
             }
         }
+        .animation(.spring(response: 0.38, dampingFraction: 0.82), value: ctl.link == .connected)
         .frame(minWidth: 460, idealWidth: 480, minHeight: 600)
         .background(NothingTheme.bg.ignoresSafeArea())
+        .preferredColorScheme(.dark)
+        .sheet(isPresented: $showPromptSheet) {
+            LaunchAtLoginPromptView(onDismiss: {
+                showPromptSheet = false
+                hasPromptedLaunchAtLogin = true
+            })
+            .environmentObject(ctl)
+        }
+        .onAppear {
+            if !hasPromptedLaunchAtLogin {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                    if !hasPromptedLaunchAtLogin {
+                        showPromptSheet = true
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Launch At Login First-Time Popup
+
+struct LaunchAtLoginPromptView: View {
+    @EnvironmentObject var ctl: EarbudsController
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Nothing Glyph aesthetic header icon
+            ZStack {
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    .frame(width: 68, height: 68)
+                Circle()
+                    .strokeBorder(NothingTheme.red.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+                    .frame(width: 54, height: 54)
+                Image(systemName: "sparkles")
+                    .font(.system(size: 24, weight: .light))
+                    .foregroundStyle(.white)
+            }
+            .padding(.top, 8)
+
+            VStack(spacing: 6) {
+                Text("START EAR-DESK AT LOGIN?")
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .tracking(1.5)
+                    .foregroundStyle(.white)
+                Text("Ear-Desk can live in your macOS menu bar and automatically monitor your Nothing & CMF audio gear whenever you start your Mac.")
+                    .font(.system(size: 11))
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .frame(maxWidth: 320)
+            }
+
+            HStack(spacing: 12) {
+                Button("NOT NOW") {
+                    onDismiss()
+                }
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.2)
+                .foregroundStyle(NothingTheme.textSecondary)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.04), in: Capsule())
+                .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
+                .buttonStyle(.plain)
+
+                Button("ENABLE AT LOGIN") {
+                    ctl.setLaunchAtLogin(true)
+                    onDismiss()
+                }
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(1.2)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(Color.white, in: Capsule())
+                .buttonStyle(.plain)
+            }
+            .padding(.bottom, 6)
+        }
+        .padding(24)
+        .frame(width: 380)
+        .background(NothingTheme.bg)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(NothingTheme.border, lineWidth: 1)
+        )
         .preferredColorScheme(.dark)
     }
 }
@@ -368,23 +472,40 @@ struct ControlsView: View {
                     .foregroundStyle(NothingTheme.textSecondary)
             }
             Spacer()
-            Button {
-                ctl.disconnect()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "power")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("DISCONNECT")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .tracking(1.2)
+            HStack(spacing: 8) {
+                // Settings button
+                Button {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(NothingTheme.textSecondary)
+                        .padding(7.5)
+                        .background(Color.white.opacity(0.04), in: Circle())
+                        .overlay(Circle().strokeBorder(NothingTheme.border, lineWidth: 1))
                 }
-                .foregroundStyle(NothingTheme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Color.white.opacity(0.04), in: Capsule())
-                .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
+                .buttonStyle(.plain)
+                .help("Settings (⌘,)")
+
+                // Disconnect button
+                Button {
+                    ctl.disconnect()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "power")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("DISCONNECT")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.2)
+                    }
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(Color.white.opacity(0.04), in: Capsule())
+                    .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.bottom, 4)
     }
@@ -411,12 +532,6 @@ struct Card<Content: View>: View {
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .tracking(1.8)
                     .foregroundStyle(isHovered ? Color.white : NothingTheme.textSecondary)
-                if let icon {
-                    Spacer()
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(isHovered ? Color.white.opacity(0.6) : NothingTheme.textTertiary)
-                }
             }
             content
         }
@@ -675,37 +790,82 @@ struct ANCSection: View {
 struct EQVisualizerView: View {
     let presetName: String
 
+    // 16-band spectrum waveform
     private var barHeights: [CGFloat] {
         switch presetName.lowercased() {
-        case "more bass": return [0.95, 0.75, 0.40, 0.20]
-        case "more treble": return [0.20, 0.40, 0.75, 0.95]
-        case "more voice": return [0.30, 0.85, 0.70, 0.30]
-        case "balanced": return [0.55, 0.55, 0.55, 0.55]
-        case "rock": return [0.85, 0.45, 0.60, 0.85]
-        case "pop": return [0.65, 0.80, 0.75, 0.55]
-        case "electronic": return [0.90, 0.60, 0.50, 0.85]
-        case "classical": return [0.55, 0.50, 0.70, 0.80]
-        case "enhance vocals": return [0.30, 0.90, 0.75, 0.35]
-        case "dirac opteo": return [0.70, 0.70, 0.70, 0.70]
-        default: return [0.50, 0.50, 0.50, 0.50]
+        case "more bass":
+            return [1.0, 0.94, 0.84, 0.72, 0.58, 0.46, 0.36, 0.28, 0.24, 0.20, 0.18, 0.16, 0.15, 0.14, 0.13, 0.12]
+        case "more treble":
+            return [0.12, 0.15, 0.18, 0.24, 0.32, 0.42, 0.54, 0.68, 0.78, 0.88, 0.94, 0.98, 0.94, 0.88, 0.82, 0.76]
+        case "more voice":
+            return [0.18, 0.24, 0.38, 0.60, 0.84, 0.98, 0.96, 0.82, 0.62, 0.44, 0.32, 0.24, 0.20, 0.18, 0.15, 0.14]
+        case "balanced":
+            return [0.50, 0.52, 0.50, 0.53, 0.51, 0.50, 0.52, 0.50, 0.53, 0.51, 0.50, 0.52, 0.50, 0.52, 0.50, 0.50]
+        case "rock":
+            return [0.92, 0.84, 0.70, 0.52, 0.40, 0.44, 0.56, 0.70, 0.82, 0.92, 0.90, 0.84, 0.80, 0.76, 0.72, 0.68]
+        case "pop":
+            return [0.62, 0.72, 0.80, 0.85, 0.82, 0.74, 0.68, 0.72, 0.78, 0.74, 0.66, 0.56, 0.48, 0.42, 0.38, 0.35]
+        case "electronic":
+            return [0.96, 0.88, 0.76, 0.62, 0.48, 0.42, 0.54, 0.72, 0.86, 0.96, 0.92, 0.84, 0.78, 0.70, 0.64, 0.58]
+        case "classical":
+            return [0.44, 0.50, 0.54, 0.58, 0.64, 0.70, 0.76, 0.82, 0.84, 0.80, 0.72, 0.64, 0.56, 0.48, 0.42, 0.38]
+        case "custom":
+            return [0.72, 0.65, 0.58, 0.52, 0.48, 0.55, 0.68, 0.75, 0.82, 0.85, 0.78, 0.70, 0.65, 0.60, 0.58, 0.55]
+        case "enhance vocals":
+            return [0.16, 0.22, 0.36, 0.62, 0.88, 1.0, 0.92, 0.76, 0.58, 0.38, 0.26, 0.20, 0.18, 0.15, 0.13, 0.12]
+        case "dirac opteo":
+            return [0.65, 0.68, 0.70, 0.68, 0.70, 0.72, 0.70, 0.68, 0.72, 0.70, 0.68, 0.66, 0.64, 0.62, 0.60, 0.58]
+        default:
+            return [0.50, 0.51, 0.50, 0.52, 0.50, 0.51, 0.50, 0.52, 0.50, 0.51, 0.50, 0.52, 0.50, 0.51, 0.50, 0.50]
         }
     }
 
     @State private var animPhase = false
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 3.5) {
-            ForEach(0..<barHeights.count, id: \.self) { i in
-                let jitter: CGFloat = animPhase ? CGFloat(sin(Double(i) * 1.3)) * 0.12 : -CGFloat(cos(Double(i) * 0.9)) * 0.10
-                let h = max(4, (barHeights[i] + jitter) * 24)
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(NothingTheme.red)
-                    .frame(width: 3.5, height: h)
-                    .animation(.easeInOut(duration: 0.7 + Double(i) * 0.15).repeatForever(autoreverses: true), value: animPhase)
+        GeometryReader { geo in
+            let totalWidth = geo.size.width
+            let count = barHeights.count
+            let spacing: CGFloat = 2.5
+            let barW = max(2.5, (totalWidth - (CGFloat(count - 1) * spacing)) / CGFloat(count))
+
+            HStack(alignment: .bottom, spacing: spacing) {
+                ForEach(0..<count, id: \.self) { i in
+                    let harmonicFactor = CGFloat(sin(Double(i) * 0.5 + (animPhase ? 1.5 : 0.0)))
+                    let jitter: CGFloat = harmonicFactor * 0.07
+                    let barHeight = max(4.0, (barHeights[i] + jitter) * (geo.size.height - 4))
+
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    NothingTheme.red,
+                                    NothingTheme.red.opacity(0.8),
+                                    Color.white.opacity(0.4)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(width: barW, height: barHeight)
+                        .animation(
+                            .easeInOut(duration: 0.65 + Double(i % 4) * 0.12).repeatForever(autoreverses: true),
+                            value: animPhase
+                        )
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         }
-        .frame(height: 24)
-        .padding(.horizontal, 6)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.025))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                )
+        )
         .onAppear { animPhase = true }
     }
 }
@@ -725,50 +885,49 @@ struct EQSection: View {
     }
 
     var body: some View {
-        Card(title: "Equalizer", icon: "slider.vertical.3") {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack {
-                    Text("PROFILE: \(activePresetName.uppercased())")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .tracking(1.4)
-                        .foregroundStyle(NothingTheme.textSecondary)
-                    Spacer()
-                    EQVisualizerView(presetName: activePresetName)
-                }
-
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), spacing: 8)], spacing: 8) {
-                    ForEach(presets, id: \.wire) { preset in
-                        let isSelected = ctl.eqWire == preset.wire
-                        Button {
-                            ctl.setEQ(wire: preset.wire)
-                        } label: {
-                            HStack(spacing: 5) {
-                                if isSelected {
-                                    Circle()
-                                        .fill(NothingTheme.red)
-                                        .frame(width: 4, height: 4)
+        Card(title: "Equalizer") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    // Presets on the left
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
+                        ForEach(presets, id: \.wire) { preset in
+                            let isSelected = ctl.eqWire == preset.wire
+                            Button {
+                                ctl.setEQ(wire: preset.wire)
+                            } label: {
+                                HStack(spacing: 5) {
+                                    if isSelected {
+                                        Circle()
+                                            .fill(NothingTheme.red)
+                                            .frame(width: 4, height: 4)
+                                    }
+                                    Text(preset.name.uppercased())
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .tracking(0.8)
+                                        .lineLimit(1)
                                 }
-                                Text(preset.name.uppercased())
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .tracking(1.0)
-                                    .lineLimit(1)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .padding(.horizontal, 6)
+                                .foregroundStyle(isSelected ? .black : .white)
+                                .background(
+                                    isSelected ? Color.white : NothingTheme.surface,
+                                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .strokeBorder(isSelected ? Color.clear : NothingTheme.border, lineWidth: 1)
+                                )
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 8)
-                            .foregroundStyle(isSelected ? .black : .white)
-                            .background(
-                                isSelected ? Color.white : NothingTheme.surface,
-                                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .strokeBorder(isSelected ? Color.clear : NothingTheme.border, lineWidth: 1)
-                            )
+                            .buttonStyle(.plain)
+                            .animation(.easeInOut(duration: 0.16), value: isSelected)
                         }
-                        .buttonStyle(.plain)
-                        .animation(.easeInOut(duration: 0.16), value: isSelected)
                     }
+                    .frame(maxWidth: .infinity)
+
+                    // Waveform on the right of buttons
+                    EQVisualizerView(presetName: activePresetName)
+                        .frame(width: 130)
                 }
 
                 if ctl.eqWire == 5 || ctl.eqWire == 6 {
@@ -878,6 +1037,8 @@ struct QuickSettings: View {
                     icon: "bolt.horizontal",
                     isOn: Binding(get: { ctl.lowLatency }, set: ctl.setLowLatency)
                 )
+
+
             }
         }
     }
