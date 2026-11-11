@@ -31,7 +31,7 @@ file "$APP/Contents/MacOS/EarDesk"
 if command -v python3 &>/dev/null; then
     python3 -c '
 import os, subprocess, time
-dmg_path = "build/Ear-Desk-macOS-v1.2.0.dmg"
+dmg_path = "build/Ear-Desk-macOS-v1.2.1.dmg"
 temp_dmg = "build/temp_installer.dmg"
 vol_name = "Ear-Desk"
 src_app = "build/Ear-Desk.app"
@@ -42,7 +42,13 @@ if os.path.exists(dmg_path): os.remove(dmg_path)
 
 subprocess.run(["hdiutil", "create", "-size", "120m", "-fs", "HFS+", "-volname", vol_name, "-ov", temp_dmg], check=True)
 mount_output = subprocess.check_output(["hdiutil", "attach", temp_dmg, "-readwrite", "-noverify", "-noautoopen"]).decode()
-mount_point = f"/Volumes/{vol_name}"
+mount_point = None
+for line in mount_output.splitlines():
+    if "/Volumes/" in line:
+        mount_point = line.split("/Volumes/")[-1]
+        mount_point = "/Volumes/" + mount_point.strip()
+        break
+if not mount_point: mount_point = f"/Volumes/{vol_name}"
 
 try:
     subprocess.run(["cp", "-R", src_app, f"{mount_point}/Ear-Desk.app"], check=True)
