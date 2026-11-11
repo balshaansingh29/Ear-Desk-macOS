@@ -50,7 +50,7 @@ struct ContentView: View {
                 ConnectView()
             }
         }
-        .frame(minWidth: 460, idealWidth: 500, minHeight: 560)
+        .frame(minWidth: 460, idealWidth: 480, minHeight: 600)
         .background(NothingTheme.bg.ignoresSafeArea())
         .preferredColorScheme(.dark)
     }
@@ -62,159 +62,182 @@ struct ConnectView: View {
     @EnvironmentObject var ctl: EarbudsController
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 22) {
+                Spacer(minLength: 16)
 
-            // Glyph-inspired hero illustration
-            ZStack {
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
-                    .frame(width: 150, height: 150)
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.10), style: StrokeStyle(lineWidth: 1, dash: [4, 6]))
-                    .frame(width: 120, height: 120)
-                Circle()
-                    .fill(Color.white.opacity(0.03))
-                    .frame(width: 90, height: 90)
-                    .overlay(Circle().strokeBorder(NothingTheme.border, lineWidth: 1))
+                // Glyph-inspired hero illustration
+                ZStack {
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                        .frame(width: 140, height: 140)
+                    Circle()
+                        .strokeBorder(Color.white.opacity(0.12), style: StrokeStyle(lineWidth: 1, dash: [4, 6]))
+                        .frame(width: 110, height: 110)
+                    Circle()
+                        .fill(Color.white.opacity(0.03))
+                        .frame(width: 80, height: 80)
+                        .overlay(Circle().strokeBorder(NothingTheme.border, lineWidth: 1))
 
-                Image(systemName: "earbuds")
-                    .font(.system(size: 38, weight: .ultraLight))
-                    .foregroundStyle(.white)
-
-                // Nothing red accent dot
-                Circle()
-                    .fill(NothingTheme.red)
-                    .frame(width: 6, height: 6)
-                    .offset(x: 48, y: -48)
-            }
-
-            VStack(spacing: 6) {
-                HStack(spacing: 6) {
-                    Text("NOTHING")
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .tracking(3)
+                    Image(systemName: "earbuds")
+                        .font(.system(size: 34, weight: .ultraLight))
                         .foregroundStyle(.white)
-                    Text("(X)")
-                        .font(.system(size: 22, weight: .light, design: .monospaced))
-                        .foregroundStyle(NothingTheme.red)
+
+                    // Nothing red accent dot
+                    Circle()
+                        .fill(NothingTheme.red)
+                        .frame(width: 6, height: 6)
+                        .offset(x: 44, y: -44)
                 }
 
-                Text("// AUDIO CONTROL HUB")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .tracking(2)
-                    .foregroundStyle(NothingTheme.textTertiary)
-            }
+                VStack(spacing: 5) {
+                    HStack(spacing: 6) {
+                        Text("NOTHING")
+                            .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            .tracking(3)
+                            .foregroundStyle(.white)
+                        Text("(X)")
+                            .font(.system(size: 22, weight: .light, design: .monospaced))
+                            .foregroundStyle(NothingTheme.red)
+                    }
 
-            Text("Pair your earbuds in System Settings › Bluetooth, connect to this Mac, then select them below.")
-                .font(.system(size: 12))
-                .foregroundStyle(NothingTheme.textSecondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 340)
-
-            if ctl.pairedDevices.isEmpty {
-                VStack(spacing: 8) {
-                    Text("[ NO PAIRED DEVICES DETECTED ]")
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundStyle(NothingTheme.textSecondary)
-                        .padding(.vertical, 12)
-                        .padding(.horizontal, 16)
-                        .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 10))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(NothingTheme.borderSubtle, lineWidth: 1))
-                }
-            } else {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("SELECT DEVICE")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .tracking(1.5)
+                    Text("// AUDIO CONTROL HUB")
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .tracking(2)
                         .foregroundStyle(NothingTheme.textTertiary)
+                }
 
-                    Picker("Device", selection: $ctl.selectedAddress) {
-                        ForEach(ctl.pairedDevices) { d in
-                            Text(d.isConnected ? "\(d.name)  ●" : d.name).tag(Optional(d.id))
+                Text("Pair your earbuds in System Settings › Bluetooth, connect to this Mac, then select them below.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+
+                // Select Device card
+                Card(title: "Select Device", icon: "antenna.radiowaves.left.and.right") {
+                    if ctl.pairedDevices.isEmpty {
+                        Text("[ NO PAIRED DEVICES DETECTED ]")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .tracking(1.4)
+                            .foregroundStyle(NothingTheme.textTertiary)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 8)
+                    } else {
+                        Picker("Device", selection: $ctl.selectedAddress) {
+                            ForEach(ctl.pairedDevices) { d in
+                                Text(d.isConnected ? "\(d.name)  ●" : d.name).tag(Optional(d.id))
+                            }
                         }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+
+                // Model override
+                DisclosureGroup {
+                    Picker("Model", selection: $ctl.manualModelBase) {
+                        Text("Detect from name (Auto)").tag("auto")
+                        ForEach(DeviceCatalog.all, id: \.base) { Text("\($0.displayName) (\($0.base))").tag($0.base) }
                     }
                     .labelsHidden()
-                    .frame(maxWidth: 320)
-                }
-            }
-
-            DisclosureGroup {
-                Picker("Model", selection: $ctl.manualModelBase) {
-                    Text("Detect from name (Auto)").tag("auto")
-                    ForEach(DeviceCatalog.all, id: \.base) { Text("\($0.displayName) (\($0.base))").tag($0.base) }
-                }
-                .labelsHidden()
-                .padding(.top, 4)
-            } label: {
-                Text("MODEL OVERRIDE")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .tracking(1.5)
-                    .foregroundStyle(NothingTheme.textTertiary)
-            }
-            .frame(maxWidth: 320)
-
-            HStack(spacing: 12) {
-                Button {
-                    ctl.refreshDevices()
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 4)
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .medium))
-                        Text("REFRESH")
-                            .font(.system(size: 11, weight: .bold, design: .monospaced))
-                            .tracking(1.2)
+                        Circle()
+                            .fill(NothingTheme.red)
+                            .frame(width: 4, height: 4)
+                        Text("MODEL OVERRIDE")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundStyle(NothingTheme.textTertiary)
                     }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 9)
-                    .background(NothingTheme.surface, in: Capsule())
-                    .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
                 }
-                .buttonStyle(.plain)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(NothingTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(NothingTheme.border, lineWidth: 1)
+                )
 
-                Button {
-                    ctl.connect()
-                } label: {
-                    Text("CONNECT")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .tracking(1.5)
+                // Action buttons
+                HStack(spacing: 12) {
+                    Button {
+                        ctl.refreshDevices()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 11, weight: .medium))
+                            Text("REFRESH")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .tracking(1.2)
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(NothingTheme.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        ctl.connect()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "link")
+                                .font(.system(size: 11, weight: .bold))
+                            Text("CONNECT")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .tracking(1.5)
+                        }
+                        .frame(maxWidth: .infinity)
                         .foregroundStyle(.black)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 10)
                         .background(
                             (ctl.selectedAddress == nil || ctl.link == .connecting) ? Color.white.opacity(0.3) : Color.white,
                             in: Capsule()
                         )
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(ctl.selectedAddress == nil || ctl.link == .connecting)
                 }
-                .buttonStyle(.plain)
-                .keyboardShortcut(.defaultAction)
-                .disabled(ctl.selectedAddress == nil || ctl.link == .connecting)
-            }
 
-            switch ctl.link {
-            case .connecting:
-                HStack(spacing: 8) {
-                    ProgressView().scaleEffect(0.7)
-                    Text("CONNECTING...")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundStyle(NothingTheme.textSecondary)
-                }
-            case .failed(let msg):
-                Text(msg)
-                    .font(.system(size: 11, design: .monospaced))
+                switch ctl.link {
+                case .connecting:
+                    HStack(spacing: 8) {
+                        ProgressView().scaleEffect(0.7)
+                        Text("CONNECTING...")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundStyle(NothingTheme.textSecondary)
+                    }
+                    .padding(.top, 4)
+                case .failed(let msg):
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                        Text(msg)
+                            .font(.system(size: 10.5, design: .monospaced))
+                    }
                     .foregroundStyle(NothingTheme.red)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-            default:
-                EmptyView()
-            }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(NothingTheme.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(NothingTheme.red.opacity(0.2), lineWidth: 1))
+                default:
+                    EmptyView()
+                }
 
-            Spacer()
+                Spacer(minLength: 20)
+            }
+            .frame(maxWidth: 400)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
         }
-        .padding(32)
         .onAppear { ctl.refreshDevices() }
     }
 }

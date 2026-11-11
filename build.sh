@@ -13,6 +13,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/NothingX" "$APP/Contents/MacOS/NothingX"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+if [ -f Resources/AppIcon.icns ]; then
+    cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+fi
 
 # Ad-hoc sign so macOS will grant the Bluetooth permission prompt. Use your Developer ID to distribute.
 codesign --force --deep --sign - "$APP"
