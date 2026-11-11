@@ -18,6 +18,7 @@ enum LinkState: Equatable {
 
 struct MenuBarBatteryIconView: View {
     let batteryLevel: Double
+    var iconName: String = "earbuds"
 
     var body: some View {
         ZStack {
@@ -33,8 +34,8 @@ struct MenuBarBatteryIconView: View {
                 .rotationEffect(.degrees(-90))
                 .frame(width: 17, height: 17)
 
-            Image(systemName: "earbuds")
-                .font(.system(size: 8, weight: .medium))
+            Image(systemName: iconName)
+                .font(.system(size: iconName == "headphones" ? 7.5 : 8, weight: .medium))
                 .foregroundColor(.black)
         }
         .frame(width: 20, height: 20)
@@ -195,7 +196,8 @@ final class EarbudsController: ObservableObject {
         guard let level else { return }
         lastMenuBarBatteryUpdate = Date()
 
-        let iconView = MenuBarBatteryIconView(batteryLevel: level)
+        let iconName = model?.systemIconName ?? "earbuds"
+        let iconView = MenuBarBatteryIconView(batteryLevel: level, iconName: iconName)
         let renderer = ImageRenderer(content: iconView)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
         if let img = renderer.nsImage {

@@ -1,3 +1,22 @@
+// MARK: - Product Asset Helper
+
+enum ProductAssets {
+    static func image(for base: String?) -> NSImage? {
+        guard let base = base else { return nil }
+        if let bundlePath = Bundle.main.path(forResource: base, ofType: "png", inDirectory: "Products"),
+           let img = NSImage(contentsOfFile: bundlePath) {
+            return img
+        }
+        // Fallback for development / unbundled builds
+        let devPath = "Resources/Products/\(base).png"
+        if FileManager.default.fileExists(atPath: devPath),
+           let img = NSImage(contentsOfFile: devPath) {
+            return img
+        }
+        return nil
+    }
+}
+
 import SwiftUI
 import NothingXCore
 
@@ -247,10 +266,26 @@ struct ConnectView: View {
 struct ControlsView: View {
     @EnvironmentObject var ctl: EarbudsController
 
+    private var productImage: NSImage? {
+        ProductAssets.image(for: ctl.model?.base)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 header
+                if let img = productImage {
+                    HStack {
+                        Spacer()
+                        Image(nsImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 180)
+                            .shadow(color: Color.black.opacity(0.5), radius: 16, x: 0, y: 8)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                }
                 BatteryView(info: ctl.battery)
                 if ctl.model?.hasANC ?? true { ANCSection() }
                 EQSection()
@@ -399,13 +434,19 @@ struct BatteryRingView: View {
 }
 
 struct BatteryView: View {
+    @EnvironmentObject var ctl: EarbudsController
     let info: BatteryInfo
+
+    private var deviceIcon: String {
+        ctl.model?.systemIconName ?? "earbuds"
+    }
 
     var body: some View {
         Card(title: "Battery", icon: "bolt.badge.clock") {
             HStack(spacing: 24) {
                 if let s = info.stereo {
-                    BatteryRingView(label: "EARBUDS", cell: s, iconName: "earbuds")
+                    let label = ctl.model?.displayName.uppercased().contains("HEADPHONE") == true ? "HEADPHONES" : "EARBUDS"
+                    BatteryRingView(label: label, cell: s, iconName: deviceIcon)
                 } else {
                     if let l = info.left {
                         BatteryRingView(label: "LEFT", cell: l, iconName: "earbuds")

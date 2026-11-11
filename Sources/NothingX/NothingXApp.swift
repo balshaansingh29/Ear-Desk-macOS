@@ -22,7 +22,7 @@ struct NothingXApp: App {
             if let image = controller.menuBarIcon {
                 Image(nsImage: image)
             } else {
-                Image(systemName: "earbuds")
+                Image(systemName: controller.model?.systemIconName ?? "earbuds")
             }
         }
     }

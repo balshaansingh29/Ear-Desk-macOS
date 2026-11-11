@@ -31,6 +31,20 @@ public struct DeviceModel {
 
     public var anc: ANCCapabilities? { ancLevel < 0 ? nil : ANCCapabilities(rawValue: ancLevel) }
     public var hasANC: Bool { ancLevel >= 0 }
+
+    /// SF Symbol name representing this device type
+    public var systemIconName: String {
+        let name = displayName.lowercased()
+        if ringStyle == .headphone || name.contains("headphone") {
+            return "headphones"
+        } else if name.contains("neckband") {
+            return "beats.earphones"
+        } else if name.contains("ear (open)") || name.contains("clip") {
+            return "earbuds.case"
+        } else {
+            return "earbuds"
+        }
+    }
 }
 
 public enum DeviceCatalog {
