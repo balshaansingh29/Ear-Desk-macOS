@@ -4,6 +4,10 @@ A lightweight, native SwiftUI app designed specifically for macOS (Apple Silicon
 
 Built with Nothing's signature dark aesthetic, featuring live battery rings, full Active Noise Cancellation (ANC) switching, Equalizer profiles, Ultra Bass / Bass Enhance toggles, Find My Earbuds, and a dynamic menu bar extra with a circular battery gauge.
 
+<p align="center">
+  <img src="docs/assets/nothing-x-screenshot.png" alt="Nothing X for macOS showing CMF Headphone Pro controls with Battery Gauge, Noise Control, Equalizer with animated spectrum visualizer, Quick Settings, and Find My Earbuds" width="720" />
+</p>
+
 ---
 
 ## ⚡ Features
@@ -60,8 +64,8 @@ Compatible with most Nothing and CMF audio devices communicating over Bluetooth 
 Clone the repository and run the build script:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/NothingX.git
-cd NothingX
+git clone https://github.com/balshaansingh29/NothingX-macOS.git
+cd NothingX-macOS
 ./build.sh
 ```
 
