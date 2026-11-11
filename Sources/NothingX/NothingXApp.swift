@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import NothingXCore
 
 @main
@@ -10,6 +11,10 @@ struct NothingXApp: App {
             ContentView().environmentObject(controller)
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            // Remove the macOS system "Services" menu
+            CommandGroup(replacing: .systemServices) {}
+        }
 
         MenuBarExtra {
             MenuContent().environmentObject(controller)
@@ -26,16 +31,34 @@ struct NothingXApp: App {
 struct MenuContent: View {
     @EnvironmentObject var ctl: EarbudsController
 
+    private func bringAppToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
     var body: some View {
         if ctl.link == .connected {
-            Button(ctl.deviceName) {}
+            Button(ctl.deviceName) {
+                bringAppToFront()
+            }
             if let s = ctl.battery.stereo {
-                Button("Battery \(s.level)%") {}
+                Button("Battery \(s.level)%") {
+                    bringAppToFront()
+                }
             } else {
-                let parts = [("L", ctl.battery.left), ("R", ctl.battery.right), ("Case", ctl.battery.caseCell)]
-                    .compactMap { label, cell in cell.map { "\(label) \($0.level)%" } }
-                if !parts.isEmpty {
-                    Button(parts.joined(separator: "  ")) {}
+                let label: String = {
+                    var items: [String] = []
+                    if let l = ctl.battery.left { items.append("L \(l.level)%") }
+                    if let r = ctl.battery.right { items.append("R \(r.level)%") }
+                    if let c = ctl.battery.caseCell { items.append("Case \(c.level)%") }
+                    return items.joined(separator: "  ")
+                }()
+                if !label.isEmpty {
+                    Button(label) {
+                        bringAppToFront()
+                    }
                 }
             }
             Divider()
@@ -49,10 +72,12 @@ struct MenuContent: View {
             }
             Button("Disconnect") { ctl.disconnect() }
         } else {
-            Text("Not connected")
+            Button("Not Connected - Open App") {
+                bringAppToFront()
+            }
         }
         Divider()
-        Button("Quit") { NSApplication.shared.terminate(nil) }
+        Button("Quit Nothing X") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }
 }
