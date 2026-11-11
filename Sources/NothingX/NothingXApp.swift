@@ -32,13 +32,35 @@ struct MenuContent: View {
     @EnvironmentObject var ctl: EarbudsController
 
     private func bringAppToFront() {
+        // Bring macOS app process to the front
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        if let window = NSApp.windows.first(where: { $0.canBecomeMain }) {
-            window.makeKeyAndOrderFront(nil)
+
+        DispatchQueue.main.async {
+            // Find existing main window without spawning a new one
+            for window in NSApp.windows {
+                let className = window.className
+                if className.contains("StatusBarWindow") || className.contains("MenuBarExtra") {
+                    continue
+                }
+                // Unminimize if minimized and bring to front
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
+                window.setIsVisible(true)
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                return
+            }
         }
     }
 
     var body: some View {
+        Button("Open Nothing X") {
+            bringAppToFront()
+        }
+        Divider()
+
         if ctl.link == .connected {
             Button(ctl.deviceName) {
                 bringAppToFront()
@@ -72,9 +94,7 @@ struct MenuContent: View {
             }
             Button("Disconnect") { ctl.disconnect() }
         } else {
-            Button("Not Connected - Open App") {
-                bringAppToFront()
-            }
+            Text("Not Connected")
         }
         Divider()
         Button("Quit Nothing X") { NSApplication.shared.terminate(nil) }
