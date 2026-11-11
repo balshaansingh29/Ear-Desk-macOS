@@ -18,7 +18,7 @@ enum ProductAssets {
 }
 
 import SwiftUI
-import NothingXCore
+import EarDeskCore
 
 // MARK: - Nothing Design System
 

@@ -1,5 +1,5 @@
 import XCTest
-@testable import NothingXCore
+@testable import EarDeskCore
 
 /// Golden vectors were produced by running the original ear-web `send()` / `crc16()` JavaScript.
 final class ProtocolTests: XCTestCase {

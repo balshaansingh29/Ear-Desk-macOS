@@ -1,9 +1,9 @@
 import SwiftUI
 import AppKit
-import NothingXCore
+import EarDeskCore
 
 @main
-struct NothingXApp: App {
+struct EarDeskApp: App {
     @StateObject private var controller = EarbudsController()
 
     var body: some Scene {

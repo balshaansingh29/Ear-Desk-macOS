@@ -1,6 +1,6 @@
 import Foundation
 import IOBluetooth
-import NothingXCore
+import EarDeskCore
 
 /// Bluetooth Classic RFCOMM link to the earbuds' SPP service (the same service the
 /// web client opens through Web Serial). Replaces `navigator.serial` in ear-web.

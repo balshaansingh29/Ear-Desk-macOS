@@ -1,7 +1,7 @@
 import Foundation
 import IOBluetooth
 import SwiftUI
-import NothingXCore
+import EarDeskCore
 
 struct PairedDevice: Identifiable, Hashable {
     let id: String          // Bluetooth address

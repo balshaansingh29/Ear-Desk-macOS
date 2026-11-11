@@ -5,7 +5,7 @@
     <key>CFBundleName</key><string>Ear-Desk</string>
     <key>CFBundleDisplayName</key><string>Ear-Desk</string>
     <key>CFBundleIdentifier</key><string>app.eardesk.mac</string>
-    <key>CFBundleExecutable</key><string>NothingX</string>
+    <key>CFBundleExecutable</key><string>EarDesk</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>1.2.0</string>

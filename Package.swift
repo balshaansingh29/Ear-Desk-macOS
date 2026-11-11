@@ -2,22 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "NothingX",
+    name: "EarDesk",
     platforms: [.macOS(.v13)],
     targets: [
         .target(
-            name: "NothingXCore",
-            path: "Sources/NothingXCore"
+            name: "EarDeskCore",
+            path: "Sources/EarDeskCore"
         ),
         .executableTarget(
-            name: "NothingX",
-            dependencies: ["NothingXCore"],
-            path: "Sources/NothingX"
+            name: "EarDesk",
+            dependencies: ["EarDeskCore"],
+            path: "Sources/EarDesk"
         ),
         .testTarget(
-            name: "NothingXTests",
-            dependencies: ["NothingXCore"],
-            path: "Tests/NothingXTests"
+            name: "EarDeskTests",
+            dependencies: ["EarDeskCore"],
+            path: "Tests/EarDeskTests"
         ),
     ]
 )
