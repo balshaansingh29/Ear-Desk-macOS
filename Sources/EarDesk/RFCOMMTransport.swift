@@ -21,29 +21,53 @@ final class RFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     func open(_ device: IOBluetoothDevice) {
         close()
         self.device = device
-        // Refresh SDP so the SPP record is present, then look up the RFCOMM channel id.
+
+        // If the device already has the SDP record cached, try to connect directly
+        // to avoid unnecessary or failing redundant SDP queries.
+        let uuid = IOBluetoothSDPUUID(bytes: RFCOMMTransport.sppUUIDBytes, length: 16)
+        if let record = device.getServiceRecord(for: uuid) {
+            var channelID: BluetoothRFCOMMChannelID = 0
+            if record.getRFCOMMChannelID(&channelID) == kIOReturnSuccess {
+                var ch: IOBluetoothRFCOMMChannel?
+                let r = device.openRFCOMMChannelAsync(&ch, withChannelID: channelID, delegate: self)
+                if r == kIOReturnSuccess {
+                    channel = ch
+                    return
+                }
+            }
+        }
+
+        // Otherwise query SDP records
         device.performSDPQuery(self)
     }
 
     @objc func sdpQueryComplete(_ device: IOBluetoothDevice!, status: IOReturn) {
         guard status == kIOReturnSuccess else {
-            onClose?("Service lookup failed (\(status)). Is the device connected to this Mac?")
+            DispatchQueue.main.async {
+                self.onClose?("Service lookup failed (\(status)). Is the device connected to this Mac?")
+            }
             return
         }
         let uuid = IOBluetoothSDPUUID(bytes: RFCOMMTransport.sppUUIDBytes, length: 16)
         guard let record = device.getServiceRecord(for: uuid) else {
-            onClose?("This device does not expose the Nothing control service.")
+            DispatchQueue.main.async {
+                self.onClose?("This device does not expose the Nothing control service.")
+            }
             return
         }
         var channelID: BluetoothRFCOMMChannelID = 0
         guard record.getRFCOMMChannelID(&channelID) == kIOReturnSuccess else {
-            onClose?("Could not read the RFCOMM channel for the control service.")
+            DispatchQueue.main.async {
+                self.onClose?("Could not read the RFCOMM channel for the control service.")
+            }
             return
         }
         var ch: IOBluetoothRFCOMMChannel?
         let r = device.openRFCOMMChannelAsync(&ch, withChannelID: channelID, delegate: self)
         if r != kIOReturnSuccess {
-            onClose?("Could not open the connection (\(r)).")
+            DispatchQueue.main.async {
+                self.onClose?("Could not open the connection (\(r)).")
+            }
             return
         }
         channel = ch
@@ -59,10 +83,15 @@ final class RFCOMMTransport: NSObject, IOBluetoothRFCOMMChannelDelegate {
     }
 
     func close() {
-        _ = channel?.setDelegate(nil)
-        _ = channel?.close()
-        channel = nil
-        _ = device?.closeConnection()
+        if let ch = channel {
+            ch.setDelegate(nil)
+            ch.close()
+            channel = nil
+        }
+        // NOTE: Do NOT call device.closeConnection() here!
+        // Calling closeConnection() tears down the host baseband / audio ACL connection,
+        // leaving IOBluetooth and the earbuds in an inconsistent disconnected state
+        // where subsequent RFCOMM opens fail until the app or Bluetooth daemon restarts.
         device = nil
     }
 

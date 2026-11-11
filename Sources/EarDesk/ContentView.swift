@@ -1,3 +1,68 @@
+// MARK: - Product Hero View
+
+struct ProductHeroView: View {
+    let image: NSImage
+    @State private var isHovered = false
+    @State private var isFloating = false
+
+    var body: some View {
+        HStack {
+            Spacer()
+            ZStack {
+                // Subtle ambient glow
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.white.opacity(isHovered ? 0.08 : 0.03), Color.clear],
+                            center: .center,
+                            startRadius: 20,
+                            endRadius: 120
+                        )
+                    )
+                    .frame(width: 220, height: 220)
+
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 180)
+                    .scaleEffect(isHovered ? 1.03 : 1.0)
+                    .offset(y: isFloating ? -4 : 4)
+                    .shadow(color: Color.black.opacity(isHovered ? 0.65 : 0.45), radius: isHovered ? 24 : 14, x: 0, y: isHovered ? 12 : 8)
+                    .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: isFloating)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isHovered)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 6)
+        .onHover { isHovered = $0 }
+        .onAppear {
+            isFloating = true
+        }
+    }
+}
+
+// MARK: - Pulsing Status Dot
+
+struct PulsingStatusDot: View {
+    @State private var pulse = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color(red: 0.2, green: 0.85, blue: 0.4).opacity(0.35))
+                .frame(width: 12, height: 12)
+                .scaleEffect(pulse ? 1.4 : 0.9)
+                .opacity(pulse ? 0.0 : 0.8)
+                .animation(.easeOut(duration: 1.6).repeatForever(autoreverses: false), value: pulse)
+
+            Circle()
+                .fill(Color(red: 0.2, green: 0.85, blue: 0.4))
+                .frame(width: 6, height: 6)
+        }
+        .onAppear { pulse = true }
+    }
+}
+
 // MARK: - Product Asset Helper
 
 enum ProductAssets {
@@ -275,16 +340,7 @@ struct ControlsView: View {
             VStack(alignment: .leading, spacing: 20) {
                 header
                 if let img = productImage {
-                    HStack {
-                        Spacer()
-                        Image(nsImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxHeight: 180)
-                            .shadow(color: Color.black.opacity(0.5), radius: 16, x: 0, y: 8)
-                        Spacer()
-                    }
-                    .padding(.vertical, 8)
+                    ProductHeroView(image: img)
                 }
                 BatteryView(info: ctl.battery)
                 if ctl.model?.hasANC ?? true { ANCSection() }
@@ -301,9 +357,7 @@ struct ControlsView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color(red: 0.2, green: 0.85, blue: 0.4))
-                        .frame(width: 6, height: 6)
+                    PulsingStatusDot()
                     Text(ctl.deviceName.uppercased())
                         .font(.system(size: 17, weight: .bold, design: .monospaced))
                         .tracking(1.5)
@@ -343,32 +397,38 @@ struct Card<Content: View>: View {
     var icon: String? = nil
     @ViewBuilder var content: Content
 
+    @State private var isHovered = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Circle()
                     .fill(NothingTheme.red)
                     .frame(width: 5, height: 5)
+                    .scaleEffect(isHovered ? 1.25 : 1.0)
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
                 Text(title.uppercased())
                     .font(.system(size: 11, weight: .bold, design: .monospaced))
                     .tracking(1.8)
-                    .foregroundStyle(NothingTheme.textSecondary)
+                    .foregroundStyle(isHovered ? Color.white : NothingTheme.textSecondary)
                 if let icon {
                     Spacer()
                     Image(systemName: icon)
                         .font(.system(size: 11, weight: .regular))
-                        .foregroundStyle(NothingTheme.textTertiary)
+                        .foregroundStyle(isHovered ? Color.white.opacity(0.6) : NothingTheme.textTertiary)
                 }
             }
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
-        .background(NothingTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(isHovered ? NothingTheme.surfaceHover : NothingTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .strokeBorder(NothingTheme.border, lineWidth: 1)
+                .strokeBorder(isHovered ? Color.white.opacity(0.18) : NothingTheme.border, lineWidth: 1)
         )
+        .animation(.easeInOut(duration: 0.18), value: isHovered)
+        .onHover { isHovered = $0 }
     }
 }
 
@@ -400,12 +460,21 @@ struct BatteryRingView: View {
                     .stroke(Color.white.opacity(0.08), lineWidth: 4.5)
                     .frame(width: 58, height: 58)
 
+                if cell.charging {
+                    Circle()
+                        .trim(from: 0, to: CGFloat(progress))
+                        .stroke(Color(red: 0.2, green: 0.85, blue: 0.4).opacity(0.35), style: StrokeStyle(lineWidth: 7.5, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 58, height: 58)
+                        .blur(radius: 3)
+                }
+
                 Circle()
                     .trim(from: 0, to: CGFloat(progress))
                     .stroke(ringColor, style: StrokeStyle(lineWidth: 4.5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                     .frame(width: 58, height: 58)
-                    .animation(.easeOut(duration: 0.35), value: progress)
+                    .animation(.spring(response: 0.5, dampingFraction: 0.8), value: progress)
 
                 VStack(spacing: 1) {
                     if cell.charging {
@@ -622,17 +691,22 @@ struct EQVisualizerView: View {
         }
     }
 
+    @State private var animPhase = false
+
     var body: some View {
-        HStack(alignment: .bottom, spacing: 4) {
+        HStack(alignment: .bottom, spacing: 3.5) {
             ForEach(0..<barHeights.count, id: \.self) { i in
+                let jitter: CGFloat = animPhase ? CGFloat(sin(Double(i) * 1.3)) * 0.12 : -CGFloat(cos(Double(i) * 0.9)) * 0.10
+                let h = max(4, (barHeights[i] + jitter) * 24)
                 RoundedRectangle(cornerRadius: 1.5)
                     .fill(NothingTheme.red)
-                    .frame(width: 4, height: max(4, barHeights[i] * 24))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: barHeights[i])
+                    .frame(width: 3.5, height: h)
+                    .animation(.easeInOut(duration: 0.7 + Double(i) * 0.15).repeatForever(autoreverses: true), value: animPhase)
             }
         }
         .frame(height: 24)
         .padding(.horizontal, 6)
+        .onAppear { animPhase = true }
     }
 }
 

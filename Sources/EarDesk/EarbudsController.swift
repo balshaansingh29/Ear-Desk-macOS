@@ -113,6 +113,10 @@ final class EarbudsController: ObservableObject {
         stopBatteryTimer()
         transport.close()
         link = .idle
+        // Clean up session state so reconnection has a clean slate
+        battery = BatteryInfo()
+        ringing = (false, false)
+        refreshDevices()
     }
 
     private func didOpen() {
