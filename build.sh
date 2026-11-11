@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds a native Apple-silicon (arm64) Nothing X.app. Run on a Mac with Xcode or the Command Line Tools.
+# Builds a native Apple-silicon (arm64) Ear-Desk.app. Run on a Mac with Xcode or the Command Line Tools.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -8,7 +8,7 @@ swift build -c release --arch arm64
 
 BIN_DIR=$(swift build --show-bin-path -c release --arch arm64)
 
-APP="build/Nothing X.app"
+APP="build/Ear-Desk.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/NothingX" "$APP/Contents/MacOS/NothingX"

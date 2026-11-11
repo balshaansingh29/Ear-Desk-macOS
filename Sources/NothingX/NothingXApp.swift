@@ -7,7 +7,7 @@ struct NothingXApp: App {
     @StateObject private var controller = EarbudsController()
 
     var body: some Scene {
-        WindowGroup("Nothing X") {
+        WindowGroup("Ear-Desk") {
             ContentView().environmentObject(controller)
         }
         .windowResizability(.contentMinSize)
@@ -56,7 +56,7 @@ struct MenuContent: View {
     }
 
     var body: some View {
-        Button("Open Nothing X") {
+        Button("Open Ear-Desk") {
             bringAppToFront()
         }
         Divider()
@@ -97,7 +97,7 @@ struct MenuContent: View {
             Text("Not Connected")
         }
         Divider()
-        Button("Quit Nothing X") { NSApplication.shared.terminate(nil) }
+        Button("Quit Ear-Desk") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
     }
 }

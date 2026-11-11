@@ -2,18 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>CFBundleName</key><string>Nothing X</string>
-    <key>CFBundleDisplayName</key><string>Nothing X</string>
-    <key>CFBundleIdentifier</key><string>app.nothingx.mac</string>
+    <key>CFBundleName</key><string>Ear-Desk</string>
+    <key>CFBundleDisplayName</key><string>Ear-Desk</string>
+    <key>CFBundleIdentifier</key><string>app.eardesk.mac</string>
     <key>CFBundleExecutable</key><string>NothingX</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.1.1</string>
+    <key>CFBundleShortVersionString</key><string>1.2.0</string>
     <key>CFBundleVersion</key><string>3</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Nothing X talks to your Nothing or CMF earbuds over Bluetooth to change noise control, EQ and other settings.</string>
+    <string>Ear-Desk talks to your Nothing or CMF earbuds over Bluetooth to change noise control, EQ and other settings.</string>
 </dict>
 </plist>

@@ -1,11 +1,11 @@
-# Nothing X for macOS 🎧
+# Ear-Desk for macOS 🎧
 
 A lightweight, native SwiftUI app designed specifically for macOS (Apple Silicon, macOS 13+) to monitor and manage your **Nothing** and **CMF by Nothing** earbuds without needing a phone.
 
 Built with Nothing's signature dark aesthetic, featuring live battery rings, full Active Noise Cancellation (ANC) switching, Equalizer profiles, Ultra Bass / Bass Enhance toggles, Find My Earbuds, and a dynamic menu bar extra with a circular battery gauge.
 
 <p align="center">
-  <img src="docs/assets/nothing-x-screenshot.png" alt="Nothing X for macOS showing CMF Headphone Pro controls with Battery Gauge, Noise Control, Equalizer with animated spectrum visualizer, Quick Settings, and Find My Earbuds" width="720" />
+  <img src="docs/assets/nothing-x-screenshot.png" alt="Ear-Desk for macOS showing CMF Headphone Pro controls with Battery Gauge, Noise Control, Equalizer with animated spectrum visualizer, Quick Settings, and Find My Earbuds" width="720" />
 </p>
 
 ---
@@ -72,16 +72,16 @@ cd NothingX-macOS
 The script will:
 1. Run the test suite (`swift test`).
 2. Compile the release binary optimized for Apple Silicon.
-3. Bundle the application into `build/Nothing X.app` with the high-resolution `AppIcon.icns`.
+3. Bundle the application into `build/Ear-Desk.app` with the high-resolution `AppIcon.icns`.
 4. Ad-hoc codesign the application so macOS prompts for Bluetooth access upon first launch.
 
 To open the app immediately:
 ```bash
-open "build/Nothing X.app"
+open "build/Ear-Desk.app"
 ```
 Or move it to your Applications folder:
 ```bash
-cp -R "build/Nothing X.app" /Applications/
+cp -R "build/Ear-Desk.app" /Applications/
 ```
 
 ---
@@ -92,7 +92,7 @@ This project is built upon the protocol reverse-engineering work from:
 
 * **[ear-web](https://github.com/radiance-project/ear-web)** by **[radiance-project](https://github.com/radiance-project)**:
   - Protocol specifications, packet framing, CRC16 algorithms, command opcodes, and device configurations were derived from `ear-web`.
-  - While `ear-web` connects through Chrome's Web Serial API, **Nothing X** ports this architecture natively to macOS using Apple's `IOBluetooth` (SPP/RFCOMM) and SwiftUI.
+  - While `ear-web` connects through Chrome's Web Serial API, **Ear-Desk** ports this architecture natively to macOS using Apple's `IOBluetooth` (SPP/RFCOMM) and SwiftUI.
   - Special thanks to the contributors of `ear-web` for documenting the Nothing earbud protocol.
 
 ---

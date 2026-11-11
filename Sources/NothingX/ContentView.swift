@@ -111,16 +111,16 @@ struct ConnectView: View {
 
                 VStack(spacing: 5) {
                     HStack(spacing: 6) {
-                        Text("NOTHING")
+                        Text("EAR")
                             .font(.system(size: 22, weight: .bold, design: .monospaced))
                             .tracking(3)
                             .foregroundStyle(.white)
-                        Text("(X)")
+                        Text("(DESK)")
                             .font(.system(size: 22, weight: .light, design: .monospaced))
                             .foregroundStyle(NothingTheme.red)
                     }
 
-                    Text("// AUDIO CONTROL HUB")
+                    Text("// AUDIO CONTROL HUB FOR MAC")
                         .font(.system(size: 10, weight: .semibold, design: .monospaced))
                         .tracking(2)
                         .foregroundStyle(NothingTheme.textTertiary)
