@@ -2,7 +2,7 @@
 
 A lightweight, native SwiftUI app designed specifically for macOS (Apple Silicon, macOS 13+) to monitor and manage your **Nothing** and **CMF by Nothing** earbuds without needing a phone.
 
-Built with Nothing's signature dark aesthetic, featuring live battery rings, full Active Noise Cancellation (ANC) switching, Equalizer profiles, Ultra Bass / Bass Enhance toggles, Find My Earbuds, and a dynamic menu bar extra with a circular battery gauge.
+Built with Nothing's signature dark aesthetic, featuring live battery rings, full Active Noise Cancellation (ANC) switching, Equalizer profiles, Ultra Bass / Bass Enhance toggles, Find My Earbuds, Auto-Connect, and a dynamic menu bar extra with a circular battery gauge.
 
 <p align="center">
   <img src="docs/assets/ear-desk-screenshot.png" alt="Ear-Desk for macOS showing CMF Headphone Pro controls with Battery Gauge, Noise Control, Equalizer with animated spectrum visualizer, Quick Settings, and Find My Earbuds" width="720" />
@@ -12,8 +12,8 @@ Built with Nothing's signature dark aesthetic, featuring live battery rings, ful
 
 ## ⚡ Features
 
-- **Dynamic Menu Bar Item**:
-  - Live circular battery progress ring rendered around the earbuds icon.
+- **Dynamic Menu Bar Extra**:
+  - Live circular battery progress ring rendered around the device icon.
   - Throttled 5-minute background refresh to minimize Bluetooth polling and battery consumption.
   - Quick dropdown access to switch ANC modes or disconnect.
 - **Nothing OS Dark Aesthetic**:
@@ -22,11 +22,19 @@ Built with Nothing's signature dark aesthetic, featuring live battery rings, ful
 - **Noise Control**:
   - Switch between **Off**, **Noise Cancellation**, and **Transparency**.
   - Adjust NC strength levels: **High**, **Mid**, **Low**, and **Adaptive** (for supported models).
-- **Equalizer**:
-  - Supports both Classic 4-band presets (*Balanced*, *More Voice*, *More Treble*, *More Bass*) and 5/6-band Listening Mode presets (*Dirac OPTEO*, *Pop*, *Rock*, *Classical*, *Electronic*, *Enhance Vocals*).
-  - Real-time animated frequency visualizer matching the active preset.
+- **Side-by-Side Equalizer with Live Spectrum**:
+  - Precision 16-band animated spectrum visualizer with real-time harmonic waveforms reflecting active sound profiles.
+  - Classic presets (*Balanced*, *More Voice*, *More Treble*, *More Bass*) and Listening Mode presets (*Dirac OPTEO*, *Pop*, *Rock*, *Classical*, *Electronic*, *Enhance Vocals*).
+  - Dedicated **Custom** preset option to trigger and recall custom earbud tuning profiles.
 - **Bass Enhance / Ultra Bass**:
   - Multi-level intensity slider with segmented LED-style visual feedback.
+- **Auto-Connect**:
+  - Automatically detects when Nothing / CMF earbuds connect to macOS and establishes the RFCOMM control link seamlessly.
+- **Low Battery Notifications**:
+  - Native desktop alerts via macOS Notification Center when battery level drops to 15% or lower.
+- **Native Settings Window & First-Run Setup**:
+  - Dedicated macOS Settings scene (`⌘,`) with toggles for Launch at Login, Auto-Connect, Low Battery Alerts, and app details.
+  - Non-intrusive first-run prompt for Launch at Login.
 - **Quick Settings**:
   - In-Ear Detection toggle (auto-pause).
   - Low Latency Mode toggle (gaming / video synchronization).
@@ -48,8 +56,17 @@ Compatible with most Nothing and CMF audio devices communicating over Bluetooth 
 - CMF Buds / CMF Buds 2 / CMF Buds 2 Plus / CMF Buds 2a
 - CMF Buds Pro / CMF Buds Pro 2
 - Nothing Headphone (1) / Headphone (a) / CMF Headphone Pro
+- CMF Clip Pro
 
 *Note: Device models are automatically identified using Bluetooth device names. If needed, a "Model Override" picker is provided in the connection screen.*
+
+---
+
+## 📥 Downloads
+
+Grab the latest pre-built release from the **[Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases)** page:
+- **`Ear-Desk-macOS-v1.3.0.dmg`**: Drag-and-drop disk image installer.
+- **`Ear-Desk-macOS-v1.3.0.zip`**: Standard application archive containing `Ear-Desk.app`.
 
 ---
 
@@ -74,6 +91,7 @@ The script will:
 2. Compile the release binary optimized for Apple Silicon.
 3. Bundle the application into `build/Ear-Desk.app` with the high-resolution `AppIcon.icns`.
 4. Ad-hoc codesign the application so macOS prompts for Bluetooth access upon first launch.
+5. Create disk image (`.dmg`) and zip distribution bundles in `build/`.
 
 To open the app immediately:
 ```bash
