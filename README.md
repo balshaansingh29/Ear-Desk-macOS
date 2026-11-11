@@ -64,8 +64,8 @@ Compatible with most Nothing and CMF audio devices communicating over Bluetooth 
 Clone the repository and run the build script:
 
 ```bash
-git clone https://github.com/balshaansingh29/NothingX-macOS.git
-cd NothingX-macOS
+git clone https://github.com/balshaansingh29/Ear-Desk-macOS.git
+cd Ear-Desk-macOS
 ./build.sh
 ```
 
