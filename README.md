@@ -70,8 +70,8 @@ Compatible with most Nothing and CMF audio devices communicating over Bluetooth 
 ## 📥 Downloads
 
 Grab the latest pre-built release from the **[Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases)** page:
-- **`Ear-Desk-macOS-v1.5.0.dmg`**: Drag-and-drop disk image installer.
-- **`Ear-Desk-macOS-v1.5.0.zip`**: Standard application archive containing `Ear-Desk.app`.
+- **`Ear-Desk-macOS-v1.6.0.dmg`**: Drag-and-drop disk image installer.
+- **`Ear-Desk-macOS-v1.6.0.zip`**: Standard application archive containing `Ear-Desk.app`.
 
 ---
 

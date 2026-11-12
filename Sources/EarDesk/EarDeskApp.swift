@@ -53,6 +53,7 @@ struct EarDeskApp: App {
 struct MenuContent: View {
     @EnvironmentObject var ctl: EarbudsController
     @EnvironmentObject var updater: AppUpdater
+    @ObservedObject var iconManager = AppIconManager.shared
 
     private func bringAppToFront() {
         // Bring macOS app process to the front
@@ -287,9 +288,10 @@ struct MenuContent: View {
 struct SettingsView: View {
     @EnvironmentObject var ctl: EarbudsController
     @EnvironmentObject var updater: AppUpdater
+    @ObservedObject var iconManager = AppIconManager.shared
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6.0"
     }
 
     private var buildNumber: String {
@@ -345,6 +347,65 @@ struct SettingsView: View {
                         set: { ctl.setNotifyLowBattery($0) }
                     )
                 )
+
+                // App Icon & Widget Style Selector (matches macOS System Settings -> Appearance)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Icon & Widget Style")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white)
+                            Text("Select an icon appearance or follow macOS System Settings")
+                                .font(.system(size: 10))
+                                .foregroundStyle(NothingTheme.textSecondary)
+                        }
+                        Spacer()
+                        Picker("", selection: $iconManager.selectedTheme) {
+                            ForEach(AppIconTheme.allCases) { theme in
+                                Text(theme.description).tag(theme)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 150)
+                    }
+
+                    // 4 Swatches matching macOS System Settings: Default, Dark, Clear, Tinted
+                    HStack(spacing: 10) {
+                        ForEach([AppIconTheme.light, AppIconTheme.dark, AppIconTheme.clear, AppIconTheme.tinted], id: \.self) { theme in
+                            let isDirectlySelected = iconManager.selectedTheme == theme
+                            let isAutoMatching = iconManager.selectedTheme == .automatic && iconManager.iconName(for: .automatic).contains(theme.rawValue)
+                            let isActive = isDirectlySelected || isAutoMatching
+
+                            Button(action: {
+                                iconManager.selectedTheme = theme
+                            }) {
+                                VStack(spacing: 6) {
+                                    let assetName = iconManager.iconName(for: theme)
+                                    if let img = iconManager.loadIconImage(named: assetName) {
+                                        Image(nsImage: img)
+                                            .resizable()
+                                            .aspectRatio(contentMode: .fit)
+                                            .frame(width: 40, height: 40)
+                                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                                    }
+                                    Text(theme.rawValue)
+                                        .font(.system(size: 10, weight: isActive ? .semibold : .regular))
+                                        .foregroundStyle(isActive ? .white : NothingTheme.textSecondary)
+                                }
+                                .padding(.vertical, 8)
+                                .padding(.horizontal, 4)
+                                .frame(maxWidth: .infinity)
+                                .background(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(isActive ? NothingTheme.red : Color.white.opacity(0.08), lineWidth: isActive ? 1.5 : 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+
 
 
             }
@@ -482,78 +543,211 @@ struct SettingsView: View {
 }
 
 
-// MARK: - Dynamic App Icon Manager (Strictly Synchronized with macOS Appearance)
+// MARK: - Dynamic App Icon Manager
+
+public enum AppIconTheme: String, CaseIterable, Identifiable {
+    case automatic = "Automatic"
+    case light = "Default"
+    case dark = "Dark"
+    case clear = "Clear"
+    case tinted = "Tinted"
+
+    public var id: String { rawValue }
+
+    public var description: String {
+        switch self {
+        case .automatic: return "System Icon Style"
+        case .light: return "Default (Light)"
+        case .dark: return "Dark"
+        case .clear: return "Clear"
+        case .tinted: return "Tinted"
+        }
+    }
+}
 
 @MainActor
 public final class AppIconManager: ObservableObject {
     public static let shared = AppIconManager()
 
-    public init() {
-        applySystemIcon()
+    private let userDefaultsKey = "AppIconSelectedTheme"
 
-        // Listen for system appearance theme transitions
+    @Published public var selectedTheme: AppIconTheme {
+        didSet {
+            UserDefaults.standard.set(selectedTheme.rawValue, forKey: userDefaultsKey)
+            applyCurrentIcon()
+        }
+    }
+
+    public init() {
+        let savedRaw = UserDefaults.standard.string(forKey: userDefaultsKey) ?? AppIconTheme.automatic.rawValue
+        self.selectedTheme = AppIconTheme(rawValue: savedRaw) ?? .automatic
+        applyCurrentIcon()
+
+        // 1. Observe macOS Icon & Widget Style changes via NSWorkspaceIconAppearanceConfigurationDidChangeNotification
+        let iconAppearanceChanged = NSNotification.Name("NSWorkspaceIconAppearanceConfigurationDidChangeNotification")
+        DistributedNotificationCenter.default().addObserver(
+            forName: iconAppearanceChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, self.selectedTheme == .automatic else { return }
+                self.applyCurrentIcon()
+            }
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: iconAppearanceChanged,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, self.selectedTheme == .automatic else { return }
+                self.applyCurrentIcon()
+            }
+        }
+
+        // 2. Observe system appearance theme transitions (Light/Dark mode)
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.applySystemIcon()
+                guard let self = self, self.selectedTheme == .automatic else { return }
+                self.applyCurrentIcon()
             }
         }
 
-        // Also observe local effective appearance key-value change
+        // 3. Re-verify when application becomes active
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.applySystemIcon()
+                guard let self = self, self.selectedTheme == .automatic else { return }
+                self.applyCurrentIcon()
             }
         }
     }
 
-    /// Automatically sets the dock and Finder icon to match macOS Appearance selected in Mac System Settings
-    public func applySystemIcon() {
-        let isDark = isSystemDarkMode()
-        let iconName = isDark ? "AppIcon-Dark" : "AppIcon-Light"
-
-        guard let image = loadIconImage(named: iconName) else { return }
-
-        // 1. Update live running application Dock icon
-        NSApplication.shared.applicationIconImage = image
-        self.objectWillChange.send()
-
-        // 2. Also dynamically update the .app bundle icon in Finder so it stays in sync even when viewed in /Applications
-        let bundleURL = Bundle.main.bundleURL
-        if bundleURL.pathExtension == "app" {
-            NSWorkspace.shared.setIcon(image, forFile: bundleURL.path, options: [])
+    public var isSystemDark: Bool {
+        if let appearance = NSApp?.effectiveAppearance,
+           appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+            return true
         }
-    }
-
-    private func isSystemDarkMode() -> Bool {
-        // Query global system preference directly
-        if let style = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleInterfaceStyle"] as? String,
+        let global = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain) ?? [:]
+        if let style = global["AppleInterfaceStyle"] as? String,
            style.caseInsensitiveCompare("Dark") == .orderedSame {
             return true
         }
-
-        // Fallback to NSApp effective appearance
-        if let appearance = NSApp?.effectiveAppearance {
-            return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        }
-        return true
+        return false
     }
 
-    private func loadIconImage(named name: String) -> NSImage? {
+    /// Returns the asset name corresponding to a given theme, honoring system dark/light mode for glass styles
+    public func iconName(for theme: AppIconTheme) -> String {
+        switch theme {
+        case .automatic:
+            return determineSystemIconName()
+        case .light:
+            return "AppIcon-Light"
+        case .dark:
+            return "AppIcon-Dark"
+        case .clear:
+            return isSystemDark ? "AppIcon-Clear-Dark" : "AppIcon-Clear-Light"
+        case .tinted:
+            return isSystemDark ? "AppIcon-Tinted-Dark" : "AppIcon-Tinted-Light"
+        }
+    }
+
+    /// Sets the dock icon in-memory without disk modifications or permission prompts
+    public func applyCurrentIcon() {
+        let name = iconName(for: selectedTheme)
+        guard let image = loadIconImage(named: name) else { return }
+        NSApplication.shared.applicationIconImage = image
+        self.objectWillChange.send()
+    }
+
+    /// Queries the exact macOS System Settings -> Appearance -> "Icon & widget style" setting:
+    /// [Default] -> AppIcon-Light
+    /// [Dark]    -> AppIcon-Dark
+    /// [Clear]   -> AppIcon-Clear
+    /// [Tinted]  -> AppIcon-Clear
+    /// Queries the exact macOS System Settings -> Appearance -> "Icon & widget style" setting:
+    /// Uses the exact Apple SkyLight SLSIconAppearanceConfiguration lookup tables:
+    /// Variant 0 (fullColor) -> AppIcon-Light / AppIcon-Dark
+    /// Variant 1 (clear)     -> AppIcon-Clear
+    /// Variant 2 (tinted)    -> AppIcon-Tinted
+    /// Queries the exact macOS System Settings -> Appearance -> "Icon & widget style" setting
+    /// and resolves Light/Dark sub-modes for Clear and Tinted flat liquid glass styles:
+    /// - Default: Light (AppIcon-Light)
+    /// - Dark: Dark (AppIcon-Dark)
+    /// - Clear: Flat Liquid Glass (Light: AppIcon-Clear-Light, Dark: AppIcon-Clear-Dark)
+    /// - Tinted: Flat Liquid Glass (Light: AppIcon-Tinted-Light, Dark: AppIcon-Tinted-Dark)
+    private func determineSystemIconName() -> String {
+        let isSystemDark: Bool = {
+            if let appearance = NSApp?.effectiveAppearance,
+               appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua {
+                return true
+            }
+            let global = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain) ?? [:]
+            if let style = global["AppleInterfaceStyle"] as? String,
+               style.caseInsensitiveCompare("Dark") == .orderedSame {
+                return true
+            }
+            return false
+        }()
+
+        let ws = NSWorkspace.shared
+        let configSel = NSSelectorFromString("currentIconAppearanceConfiguration")
+
+        if ws.responds(to: configSel),
+           let config = ws.perform(configSel)?.takeUnretainedValue() as? NSObject {
+            typealias IntGetter = @convention(c) (AnyObject, Selector) -> Int
+
+            let themeSel = NSSelectorFromString("iconAppearanceTheme")
+            if config.responds(to: themeSel) {
+                let getTheme = unsafeBitCast(class_getMethodImplementation(object_getClass(config), themeSel), to: IntGetter.self)
+                let rawTheme = getTheme(config, themeSel)
+
+                // Exact lookup table from macOS Appearance framework
+                // Table 1 (Theme):   0=Auto, 1=Light, 2=Dark
+                // Table 2 (Variant): 0=FullColor, 1=Clear, 2=Tinted
+                let themeTable: [UInt8]   = [0, 0, 0, 1, 1, 1, 2, 2, 2]
+                let variantTable: [UInt8] = [2, 0, 1, 2, 0, 1, 2, 0, 1]
+
+                if rawTheme >= 0 && rawTheme < 9 {
+                    let themeIdx = themeTable[rawTheme]
+                    let variantIdx = variantTable[rawTheme]
+
+                    let isDarkStyle = (themeIdx == 2) || (themeIdx == 0 && isSystemDark)
+
+                    switch variantIdx {
+                    case 1:
+                        // Clear Mode (Flat Liquid Glass)
+                        return isDarkStyle ? "AppIcon-Clear-Dark" : "AppIcon-Clear-Light"
+                    case 2:
+                        // Tinted Mode (Flat Liquid Glass Tinted)
+                        return isDarkStyle ? "AppIcon-Tinted-Dark" : "AppIcon-Tinted-Light"
+                    default:
+                        // FullColor (Default or Dark)
+                        return (themeIdx == 2 || (themeIdx == 0 && isSystemDark)) ? "AppIcon-Dark" : "AppIcon-Light"
+                    }
+                }
+            }
+        }
+
+        // Fallback
+        return isSystemDark ? "AppIcon-Dark" : "AppIcon-Light"
+    }
+
+    public func loadIconImage(named name: String) -> NSImage? {
         // 1. Bundle AppIcons directory
         if let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "AppIcons"),
            let img = NSImage(contentsOf: url) { return img }
         // 2. Main bundle image resource
         if let img = Bundle.main.image(forResource: name) { return img }
-        // 3. Project root relative path fallback
-        if let img = NSImage(contentsOfFile: "Resources/AppIcons/\(name).png") { return img }
-        return nil
+        // 3. Fallback: check standard app icon
+        return NSImage(named: NSImage.applicationIconName)
     }
 }

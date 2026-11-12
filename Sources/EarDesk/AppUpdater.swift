@@ -26,7 +26,7 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
     private var tempDownloadDir: URL?
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6.0"
     }
 
     public override init() {
