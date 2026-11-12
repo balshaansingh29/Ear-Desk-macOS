@@ -6,18 +6,21 @@ import EarDeskCore
 struct EarDeskApp: App {
     @StateObject private var controller = EarbudsController()
     @StateObject private var updater = AppUpdater.shared
+    @StateObject private var iconManager = AppIconManager.shared
 
     var body: some Scene {
         WindowGroup("Ear-Desk") {
             ContentView()
                 .environmentObject(controller)
                 .environmentObject(updater)
+                .environmentObject(iconManager)
         }
         .windowResizability(.contentMinSize)
         Settings {
             SettingsView()
                 .environmentObject(controller)
                 .environmentObject(updater)
+                .environmentObject(iconManager)
         }
         .commands {
             // Remove the macOS system "Services" menu
@@ -342,6 +345,8 @@ struct SettingsView: View {
                         set: { ctl.setNotifyLowBattery($0) }
                     )
                 )
+
+
             }
 
             Divider()
@@ -451,10 +456,6 @@ struct SettingsView: View {
                     .font(.system(size: 10))
                     .foregroundStyle(NothingTheme.textTertiary)
                 Spacer()
-                Button("Done") {
-                    NSApp.keyWindow?.close()
-                }
-                .keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
@@ -477,5 +478,82 @@ struct SettingsView: View {
                 .toggleStyle(NothingToggleStyle())
                 .labelsHidden()
         }
+    }
+}
+
+
+// MARK: - Dynamic App Icon Manager (Strictly Synchronized with macOS Appearance)
+
+@MainActor
+public final class AppIconManager: ObservableObject {
+    public static let shared = AppIconManager()
+
+    public init() {
+        applySystemIcon()
+
+        // Listen for system appearance theme transitions
+        DistributedNotificationCenter.default().addObserver(
+            forName: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.applySystemIcon()
+            }
+        }
+
+        // Also observe local effective appearance key-value change
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.applySystemIcon()
+            }
+        }
+    }
+
+    /// Automatically sets the dock and Finder icon to match macOS Appearance selected in Mac System Settings
+    public func applySystemIcon() {
+        let isDark = isSystemDarkMode()
+        let iconName = isDark ? "AppIcon-Dark" : "AppIcon-Light"
+
+        guard let image = loadIconImage(named: iconName) else { return }
+
+        // 1. Update live running application Dock icon
+        NSApplication.shared.applicationIconImage = image
+        self.objectWillChange.send()
+
+        // 2. Also dynamically update the .app bundle icon in Finder so it stays in sync even when viewed in /Applications
+        let bundleURL = Bundle.main.bundleURL
+        if bundleURL.pathExtension == "app" {
+            NSWorkspace.shared.setIcon(image, forFile: bundleURL.path, options: [])
+        }
+    }
+
+    private func isSystemDarkMode() -> Bool {
+        // Query global system preference directly
+        if let style = UserDefaults.standard.persistentDomain(forName: UserDefaults.globalDomain)?["AppleInterfaceStyle"] as? String,
+           style.caseInsensitiveCompare("Dark") == .orderedSame {
+            return true
+        }
+
+        // Fallback to NSApp effective appearance
+        if let appearance = NSApp?.effectiveAppearance {
+            return appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+        return true
+    }
+
+    private func loadIconImage(named name: String) -> NSImage? {
+        // 1. Bundle AppIcons directory
+        if let url = Bundle.main.url(forResource: name, withExtension: "png", subdirectory: "AppIcons"),
+           let img = NSImage(contentsOf: url) { return img }
+        // 2. Main bundle image resource
+        if let img = Bundle.main.image(forResource: name) { return img }
+        // 3. Project root relative path fallback
+        if let img = NSImage(contentsOfFile: "Resources/AppIcons/\(name).png") { return img }
+        return nil
     }
 }
