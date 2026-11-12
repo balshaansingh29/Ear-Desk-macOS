@@ -18,7 +18,7 @@
 
 ---
 
-## 🌟 Why Ear-Desk? (SEO & Overview)
+## 🌟 Overview
 
 Tired of reaching for your phone just to tweak ANC or check battery levels while working on your Mac? **Ear-Desk** brings the complete **Nothing X app experience natively to macOS**.
 
