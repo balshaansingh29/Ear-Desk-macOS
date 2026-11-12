@@ -153,4 +153,63 @@ final class ProtocolTests: XCTestCase {
         let packetConcert = Packet(command: 0x404F, operationID: 1, payload: [0x02, 0x00], raw: raw)
         XCTAssertEqual(Messages.parseSpatialAudio(packetConcert), .concert)
     }
+
+    func testDualConnectionPayloads() {
+        // Toggle on: 0xF01A payload [0x01] -> 5560011af0010001015cc8
+        let (cmdOn, payloadOn) = Messages.setDualConnection(true)
+        XCTAssertEqual(cmdOn, Command.setDualConnection)
+        XCTAssertEqual(payloadOn, [0x01])
+        let frameOn = FrameBuilder.frame(command: cmdOn, payload: payloadOn, operationID: 1)
+        XCTAssertEqual(hex(frameOn), "5560011af0010001015cc8")
+
+        // Toggle off: 0xF01A payload [0x00] -> 5560011af0010001009d08
+        let (cmdOff, payloadOff) = Messages.setDualConnection(false)
+        XCTAssertEqual(cmdOff, Command.setDualConnection)
+        XCTAssertEqual(payloadOff, [0x00])
+        let frameOff = FrameBuilder.frame(command: cmdOff, payload: payloadOff, operationID: 1)
+        XCTAssertEqual(hex(frameOff), "5560011af0010001009d08")
+
+        // Connect host AA:BB:CC:DD:EE:FF -> 5560011bf007000101aabbccddeeffae0b
+        guard let (cmdConn, payloadConn) = Messages.setDualDeviceConnect(mac: "AA:BB:CC:DD:EE:FF", connect: true) else {
+            XCTFail("Failed to build connect message")
+            return
+        }
+        XCTAssertEqual(cmdConn, Command.setDualDeviceConnect)
+        let frameConn = FrameBuilder.frame(command: cmdConn, payload: payloadConn, operationID: 1)
+        XCTAssertEqual(hex(frameConn), "5560011bf007000101aabbccddeeffae0b")
+    }
+
+    func testDualConnectionListParse() {
+        // Mock response packet for 0x4028 with 2 devices:
+        // Byte 8..9: padding
+        // Byte 10: count = 2
+        // Device 1: flags = 0x11 (current host + connected), MAC: 11:22:33:44:55:66, nameLen: 7, name: "MacBook"
+        // Device 2: flags = 0x01 (not current host + connected), MAC: AA:BB:CC:DD:EE:FF, nameLen: 6, name: "iPhone"
+        var raw: [UInt8] = [0x55, 0x60, 0x01, 0x28, 0x40, 0x00, 0x00, 0x01, 0x00, 0x00, 0x02]
+        
+        // Dev 1
+        raw.append(0x11) // flags
+        raw.append(contentsOf: [0x11, 0x22, 0x33, 0x44, 0x55, 0x66]) // MAC
+        raw.append(0x07) // nameLen
+        raw.append(contentsOf: Array("MacBook".utf8))
+
+        // Dev 2
+        raw.append(0x01) // flags
+        raw.append(contentsOf: [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]) // MAC
+        raw.append(0x06) // nameLen
+        raw.append(contentsOf: Array("iPhone".utf8))
+
+        let packet = Packet(command: Command.dualConnectionListResponse, operationID: 1, payload: [], raw: raw)
+        let devices = Messages.parseDualConnectionList(packet)
+        XCTAssertEqual(devices.count, 2)
+        XCTAssertEqual(devices[0].name, "MacBook")
+        XCTAssertEqual(devices[0].mac, "11:22:33:44:55:66")
+        XCTAssertTrue(devices[0].isCurrentHost)
+        XCTAssertTrue(devices[0].isConnected)
+
+        XCTAssertEqual(devices[1].name, "iPhone")
+        XCTAssertEqual(devices[1].mac, "AA:BB:CC:DD:EE:FF")
+        XCTAssertFalse(devices[1].isCurrentHost)
+        XCTAssertTrue(devices[1].isConnected)
+    }
 }

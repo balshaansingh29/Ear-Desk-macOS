@@ -11,7 +11,7 @@ struct EarDeskApp: App {
             ContentView().environmentObject(controller)
         }
         .windowResizability(.contentMinSize)
-                Settings {
+        Settings {
             SettingsView().environmentObject(controller)
         }
         .commands {
@@ -65,40 +65,187 @@ struct MenuContent: View {
         Divider()
 
         if ctl.link == .connected {
+            // Device header & Battery
             Button(ctl.deviceName) {
                 bringAppToFront()
             }
             if let s = ctl.battery.stereo {
-                Button("Battery \(s.level)%") {
-                    bringAppToFront()
-                }
+                Text("Headphones: \(s.level)%\(s.charging ? " ⚡" : "")")
             } else {
                 let label: String = {
                     var items: [String] = []
-                    if let l = ctl.battery.left { items.append("L \(l.level)%") }
-                    if let r = ctl.battery.right { items.append("R \(r.level)%") }
-                    if let c = ctl.battery.caseCell { items.append("Case \(c.level)%") }
-                    return items.joined(separator: "  ")
+                    if let l = ctl.battery.left { items.append("L: \(l.level)%\(l.charging ? "⚡" : "")") }
+                    if let r = ctl.battery.right { items.append("R: \(r.level)%\(r.charging ? "⚡" : "")") }
+                    if let c = ctl.battery.caseCell { items.append("Case: \(c.level)%\(c.charging ? "⚡" : "")") }
+                    return items.joined(separator: "  ·  ")
                 }()
                 if !label.isEmpty {
-                    Button(label) {
-                        bringAppToFront()
+                    Text(label)
+                }
+            }
+
+            Divider()
+
+            // MARK: Noise Control Menu Switcher
+            if ctl.model?.hasANC ?? true {
+                Menu("Noise Control") {
+                    let hasAdaptive = ctl.model?.anc?.contains(.strengthAdaptive) == true
+                    Button {
+                        ctl.setANC(hasAdaptive ? .adaptive : .high)
+                    } label: {
+                        HStack {
+                            Text(hasAdaptive ? "Adaptive Noise Cancellation" : "High Noise Cancellation")
+                            if ctl.anc == .high || ctl.anc == .adaptive {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    if ctl.model?.anc?.contains(.transparency) ?? true {
+                        Button {
+                            ctl.setANC(.transparency)
+                        } label: {
+                            HStack {
+                                Text("Transparency")
+                                if ctl.anc == .transparency {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+
+                    Button {
+                        ctl.setANC(.off)
+                    } label: {
+                        HStack {
+                            Text("Off")
+                            if ctl.anc == .off {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
                 }
             }
-            Divider()
-            if ctl.model?.hasANC ?? true {
-                Button("Noise Cancellation") { ctl.setANC(ctl.model?.anc?.contains(.strengthAdaptive) == true ? .adaptive : .high) }
-                if ctl.model?.anc?.contains(.transparency) ?? true {
-                    Button("Transparency") { ctl.setANC(.transparency) }
+
+            // MARK: Equalizer Menu Switcher
+            Menu("Equalizer") {
+                if case .listeningMode(let presets)? = ctl.model?.eqStyle {
+                    ForEach(presets, id: \.wire) { p in
+                        Button {
+                            ctl.setEQ(wire: p.wire)
+                        } label: {
+                            HStack {
+                                Text(p.name)
+                                if ctl.eqWire == p.wire {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    let classic: [(String, UInt8)] = [
+                        ("Balanced", 0), ("More Voice", 1), ("More Treble", 2), ("More Bass", 3), ("Custom", 6)
+                    ]
+                    ForEach(classic, id: \.1) { item in
+                        Button {
+                            ctl.setEQ(wire: item.1)
+                        } label: {
+                            HStack {
+                                Text(item.0)
+                                if ctl.eqWire == item.1 {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
                 }
-                Button("ANC Off") { ctl.setANC(.off) }
-                Divider()
             }
+
+            // MARK: Spatial Audio Menu Switcher (if supported)
+            if let modes = ctl.model?.supportedSpatialModes, !modes.isEmpty {
+                Menu("Spatial Audio") {
+                    ForEach(modes) { mode in
+                        Button {
+                            ctl.setSpatialAudio(mode)
+                        } label: {
+                            HStack {
+                                Text(mode.title)
+                                if ctl.spatialAudio == mode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // MARK: Bass Enhance Menu Switcher (if supported)
+            if ctl.model?.supportsBassEnhance ?? false {
+                Menu("Bass Enhance") {
+                    Button {
+                        ctl.setBass(enabled: !ctl.bassEnabled, level: ctl.bassLevel)
+                    } label: {
+                        HStack {
+                            Text(ctl.bassEnabled ? "Enabled" : "Disabled")
+                            if ctl.bassEnabled { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Divider()
+                    let maxLvl = (ctl.model?.threeStageBass ?? false) ? 2 : 5
+                    ForEach(0...maxLvl, id: \.self) { lvl in
+                        Button {
+                            ctl.setBass(enabled: true, level: lvl)
+                        } label: {
+                            HStack {
+                                Text("Level \(lvl)")
+                                if ctl.bassEnabled && ctl.bassLevel == lvl {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // MARK: Dual Connection Menu Switcher (if supported)
+            if ctl.model?.supportsDualConnection ?? true {
+                Menu("Dual Connection") {
+                    Button {
+                        ctl.setDualConnection(!ctl.dualConnectionEnabled)
+                    } label: {
+                        HStack {
+                            Text(ctl.dualConnectionEnabled ? "Multipoint: Enabled" : "Multipoint: Disabled")
+                            if ctl.dualConnectionEnabled { Image(systemName: "checkmark") }
+                        }
+                    }
+
+                    if !ctl.dualDevices.isEmpty {
+                        Divider()
+                        ForEach(ctl.dualDevices) { dev in
+                            Button {
+                                if !dev.isCurrentHost {
+                                    ctl.setDualDeviceConnected(mac: dev.mac, connect: !dev.isConnected)
+                                }
+                            } label: {
+                                HStack {
+                                    Text("\(dev.name)\(dev.isCurrentHost ? " (This Mac)" : "")")
+                                    if dev.isConnected {
+                                        Image(systemName: "link")
+                                    }
+                                }
+                            }
+                            .disabled(dev.isCurrentHost)
+                        }
+                    }
+                }
+            }
+
+            Divider()
             Button("Disconnect") { ctl.disconnect() }
         } else {
             Text("Not Connected")
         }
+
         Divider()
         Toggle("Launch at Login", isOn: Binding(get: { ctl.launchAtLogin }, set: ctl.setLaunchAtLogin))
         Divider()
@@ -113,7 +260,7 @@ struct SettingsView: View {
     @EnvironmentObject var ctl: EarbudsController
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5.0"
     }
 
     private var buildNumber: String {
@@ -121,191 +268,89 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            // General Settings Card
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(NothingTheme.red)
-                        .frame(width: 5, height: 5)
-                    Text("GENERAL")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .tracking(1.8)
+        VStack(spacing: 20) {
+            // Header
+            HStack(spacing: 12) {
+                Image(nsImage: NSApplication.shared.applicationIconImage)
+                    .resizable()
+                    .frame(width: 48, height: 48)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ear-Desk")
+                        .font(.system(size: 16, weight: .bold))
+                    Text("Version \(appVersion) (\(buildNumber))")
+                        .font(.system(size: 11))
                         .foregroundStyle(NothingTheme.textSecondary)
                 }
+                Spacer()
+            }
+            .padding(.bottom, 4)
 
-                VStack(spacing: 14) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.05))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "sparkles")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white)
-                        }
+            Divider()
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("LAUNCH AT LOGIN")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.2)
-                                .foregroundStyle(.white)
-                            Text("Automatically start Ear-Desk in the menu bar on login")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textTertiary)
-                        }
+            // Settings Options
+            VStack(spacing: 12) {
+                settingToggle(
+                    title: "Launch at Login",
+                    subtitle: "Automatically start Ear-Desk when you log in to your Mac",
+                    isOn: Binding(
+                        get: { ctl.launchAtLogin },
+                        set: { ctl.setLaunchAtLogin($0) }
+                    )
+                )
 
-                        Spacer()
+                settingToggle(
+                    title: "Auto-Connect to Paired Earbuds",
+                    subtitle: "Automatically connect when earbuds become reachable via Bluetooth",
+                    isOn: Binding(
+                        get: { ctl.autoConnect },
+                        set: { ctl.setAutoConnect($0) }
+                    )
+                )
 
-                        Toggle("", isOn: Binding(get: { ctl.launchAtLogin }, set: ctl.setLaunchAtLogin))
-                            .toggleStyle(NothingToggleStyle())
-                            .labelsHidden()
-                    }
-
-                    Divider().background(NothingTheme.borderSubtle)
-
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.05))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "bolt.badge.automatic")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("AUTO-CONNECT")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.2)
-                                .foregroundStyle(.white)
-                            Text("Automatically link when earbuds connect to macOS")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textTertiary)
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(get: { ctl.autoConnect }, set: ctl.setAutoConnect))
-                            .toggleStyle(NothingToggleStyle())
-                            .labelsHidden()
-                    }
-
-                    Divider().background(NothingTheme.borderSubtle)
-
-                    HStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(Color.white.opacity(0.05))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "bell.badge")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(.white)
-                        }
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("LOW BATTERY ALERTS")
-                                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                                .tracking(1.2)
-                                .foregroundStyle(.white)
-                            Text("Notify when earbuds battery drops to 15% or below")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textTertiary)
-                        }
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(get: { ctl.notifyLowBattery }, set: ctl.setNotifyLowBattery))
-                            .toggleStyle(NothingToggleStyle())
-                            .labelsHidden()
-                    }
-                }
-                .padding(16)
-                .background(NothingTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(NothingTheme.border, lineWidth: 1))
+                settingToggle(
+                    title: "Low Battery Notifications",
+                    subtitle: "Show desktop alert when earbud or case battery falls below 15%",
+                    isOn: Binding(
+                        get: { ctl.notifyLowBattery },
+                        set: { ctl.setNotifyLowBattery($0) }
+                    )
+                )
             }
 
-            // About Details Card
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(NothingTheme.red)
-                        .frame(width: 5, height: 5)
-                    Text("ABOUT EAR-DESK")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .tracking(1.8)
-                        .foregroundStyle(NothingTheme.textSecondary)
+            Divider()
+
+            // Footer
+            HStack {
+                Text("Designed for Nothing & CMF by Nothing Audio")
+                    .font(.system(size: 10))
+                    .foregroundStyle(NothingTheme.textTertiary)
+                Spacer()
+                Button("Done") {
+                    NSApp.keyWindow?.close()
                 }
-
-                VStack(spacing: 14) {
-                    HStack(spacing: 14) {
-                        if let appIcon = NSImage(named: "AppIcon") {
-                            Image(nsImage: appIcon)
-                                .resizable()
-                                .frame(width: 44, height: 44)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        } else {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
-                                    .frame(width: 44, height: 44)
-                                Image(systemName: "earbuds")
-                                    .font(.system(size: 20))
-                                    .foregroundStyle(.white)
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("EAR-DESK")
-                                .font(.system(size: 14, weight: .bold, design: .monospaced))
-                                .tracking(1.4)
-                                .foregroundStyle(.white)
-                            Text("Version \(appVersion) (Build \(buildNumber))")
-                                .font(.system(size: 10.5, design: .monospaced))
-                                .foregroundStyle(NothingTheme.textSecondary)
-                            Text("Native macOS controller for Nothing & CMF audio devices")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textTertiary)
-                        }
-                        Spacer()
-                    }
-
-                    Divider().background(NothingTheme.borderSubtle)
-
-                    HStack {
-                        Link(destination: URL(string: "https://github.com/balshaansingh29/Ear-Desk-macOS")!) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "arrow.up.right.circle")
-                                    .font(.system(size: 11))
-                                Text("GITHUB REPOSITORY")
-                                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                    .tracking(1.0)
-                            }
-                            .foregroundStyle(NothingTheme.textSecondary)
-                        }
-
-                        Spacer()
-
-                        Link(destination: URL(string: "https://github.com/balshaansingh29/Ear-Desk-macOS/releases")!) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 11))
-                                Text("CHECK FOR UPDATES")
-                                    .font(.system(size: 9.5, weight: .bold, design: .monospaced))
-                                    .tracking(1.0)
-                            }
-                            .foregroundStyle(NothingTheme.textSecondary)
-                        }
-                    }
-                }
-                .padding(16)
-                .background(NothingTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(NothingTheme.border, lineWidth: 1))
+                .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
-        .frame(width: 460)
-        .background(NothingTheme.bg)
+        .padding(20)
+        .frame(width: 420)
         .preferredColorScheme(.dark)
+    }
+
+    private func settingToggle(title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(NothingTheme.textSecondary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .toggleStyle(NothingToggleStyle())
+                .labelsHidden()
+        }
     }
 }

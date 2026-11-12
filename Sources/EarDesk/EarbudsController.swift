@@ -1,13 +1,22 @@
-import Cocoa
+import Foundation
 import IOBluetooth
-import SwiftUI
+import AppKit
 import ServiceManagement
 import UserNotifications
+import SwiftUI
 import EarDeskCore
+
+enum LinkState: Equatable {
+    case idle
+    case connecting
+    case connected
+    case failed(String)
+}
+
 
 struct MenuBarBatteryIconView: View {
     let batteryLevel: Double
-    var iconName: String = "earbuds"
+    let iconName: String
 
     var body: some View {
         ZStack {
@@ -31,21 +40,14 @@ struct MenuBarBatteryIconView: View {
     }
 }
 
+struct PairedDevice: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let isConnected: Bool
+}
+
 @MainActor
 final class EarbudsController: ObservableObject {
-    struct PairedDevice: Identifiable, Equatable {
-        let id: String
-        let name: String
-        let isConnected: Bool
-    }
-
-    enum LinkState: Equatable {
-        case idle
-        case connecting
-        case connected
-        case failed(String)
-    }
-
     // Discovery
     @Published var pairedDevices: [PairedDevice] = []
     @Published var selectedAddress: String?
@@ -66,6 +68,8 @@ final class EarbudsController: ObservableObject {
     @Published var lowLatency: Bool = false
     @Published var bassEnabled: Bool = false
     @Published var bassLevel: Int = 0
+    @Published var dualConnectionEnabled: Bool = false
+    @Published var dualDevices: [DualDeviceItem] = []
     @Published var ringing: (left: Bool, right: Bool) = (false, false)
     @Published var spatialAudio: SpatialAudioMode = .off
     @Published var menuBarIcon: NSImage?
@@ -143,6 +147,7 @@ final class EarbudsController: ObservableObject {
         link = .idle
         // Clean up session state so reconnection has a clean slate
         battery = BatteryInfo()
+        dualDevices = []
         hasNotifiedLowBattery = false
         ringing = (false, false)
         refreshDevices()
@@ -151,7 +156,14 @@ final class EarbudsController: ObservableObject {
     private func didOpen() {
         link = .connected
         startBatteryTimer()
-        Task { await initDevice() }
+        Task {
+            await initDevice()
+            // Second pass for dual connection to ensure list populates after initial query stabilizes
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            if self.model?.supportsDualConnection ?? true {
+                self.refreshDualConnectionList()
+            }
+        }
     }
 
     private func didClose(_ message: String?) {
@@ -173,6 +185,10 @@ final class EarbudsController: ObservableObject {
         if model?.hasANC ?? true { steps.append((Command.getANC, [])) }
         if model?.supportsBassEnhance ?? false { steps.append((Command.getBass, [])) }
         if !(model?.supportedSpatialModes.isEmpty ?? true) { steps.append((Command.getSpatialAudio, [])) }
+        if model?.supportsDualConnection ?? true {
+            steps.append((Command.getDualConnection, []))
+            steps.append(Messages.getDualConnectionList(start: 0))
+        }
         steps.append((Command.getCustomEQ, []))
         for (cmd, payload) in steps {
             send(cmd, payload)
@@ -180,7 +196,7 @@ final class EarbudsController: ObservableObject {
         }
     }
 
-        // MARK: - Launch at Login
+    // MARK: - Launch at Login
     @Published var launchAtLogin: Bool = {
         if #available(macOS 13.0, *) {
             return SMAppService.mainApp.status == .enabled
@@ -258,46 +274,42 @@ final class EarbudsController: ObservableObject {
             lowCells.append("Headphones (\(s.level)%)")
         } else {
             if let l = info.left, l.level <= 15 && !l.charging {
-                lowCells.append("Left bud (\(l.level)%)")
+                lowCells.append("Left Earbud (\(l.level)%)")
             }
             if let r = info.right, r.level <= 15 && !r.charging {
-                lowCells.append("Right bud (\(r.level)%)")
+                lowCells.append("Right Earbud (\(r.level)%)")
+            }
+            if let c = info.caseCell, c.level <= 15 && !c.charging {
+                lowCells.append("Charging Case (\(c.level)%)")
             }
         }
 
-        if !lowCells.isEmpty {
-            if !hasNotifiedLowBattery {
-                hasNotifiedLowBattery = true
-                sendLowBatteryAlert(details: lowCells.joined(separator: ", "))
+        if !lowCells.isEmpty && !hasNotifiedLowBattery {
+            hasNotifiedLowBattery = true
+            let content = UNMutableNotificationContent()
+            content.title = "Low Battery Alert"
+            content.body = "\(lowCells.joined(separator: ", ")) is running low on battery. Please charge your device."
+            content.sound = .default
+
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request) { error in
+                if let error = error {
+                    NSLog("Failed to deliver notification: \(error)")
+                }
             }
-        } else {
-            // Reset trigger once battery is charged above 20%
-            let minLvl = [info.stereo?.level, info.left?.level, info.right?.level].compactMap { $0 }.min() ?? 100
-            if minLvl > 20 {
-                hasNotifiedLowBattery = false
-            }
+        } else if lowCells.isEmpty {
+            // Reset state if all levels are above 15% (e.g. charged)
+            hasNotifiedLowBattery = false
         }
     }
 
-    private func sendLowBatteryAlert(details: String) {
-        let content = UNMutableNotificationContent()
-        content.title = "Battery Low · \(deviceName.isEmpty ? "Ear-Desk" : deviceName)"
-        content.body = "\(details) battery is running low. Please place in charging case."
-        content.sound = .default
-
-        let request = UNNotificationRequest(identifier: "EarDeskLowBattery", content: content, trigger: nil)
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
-
-// MARK: - Menu Bar Battery Ring
-
+    // MARK: Periodic Battery Polling (every 60s)
     private func startBatteryTimer() {
-        batteryTimer?.invalidate()
-        batteryTimer = Timer.scheduledTimer(withTimeInterval: menuBarUpdateInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self, self.link == .connected else { return }
+        stopBatteryTimer()
+        batteryTimer = Timer.scheduledTimer(withTimeInterval: 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self, self.link == .connected else { return }
                 self.send(Command.getBattery, [])
-                self.updateMenuBarIcon(force: true)
             }
         }
     }
@@ -305,8 +317,6 @@ final class EarbudsController: ObservableObject {
     private func stopBatteryTimer() {
         batteryTimer?.invalidate()
         batteryTimer = nil
-        lastMenuBarBatteryUpdate = nil
-        menuBarIcon = nil
     }
 
     private func checkMenuBarBatteryUpdate() {
@@ -396,6 +406,33 @@ final class EarbudsController: ObservableObject {
         send(Messages.setBass(enabled: enabled, level: level, threeStage: model?.threeStageBass ?? false))
     }
 
+    func setDualConnection(_ enabled: Bool) {
+        dualConnectionEnabled = enabled
+        send(Messages.setDualConnection(enabled))
+        // Re-read dual device list after toggling
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.refreshDualConnectionList()
+        }
+    }
+
+    func refreshDualConnectionList() {
+        send(Messages.getDualConnectionList(start: 0))
+    }
+
+    func setDualDeviceConnected(mac: String, connect: Bool) {
+        // Optimistically update device list state for instant UI response
+        if let idx = dualDevices.firstIndex(where: { $0.mac == mac }) {
+            let cur = dualDevices[idx]
+            dualDevices[idx] = DualDeviceItem(mac: cur.mac, name: cur.name, isCurrentHost: cur.isCurrentHost, isConnected: connect)
+        }
+        guard let msg = Messages.setDualDeviceConnect(mac: mac, connect: connect) else { return }
+        send(msg)
+        // Refresh from firmware after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) { [weak self] in
+            self?.refreshDualConnectionList()
+        }
+    }
+
     func ring(left: Bool, on: Bool) {
         if left { ringing.left = on } else { ringing.right = on }
         send(Messages.ring(on: on, left: left, style: model?.ringStyle ?? .perBud))
@@ -435,6 +472,16 @@ final class EarbudsController: ObservableObject {
             if let mode = Messages.parseSpatialAudio(p) {
                 spatialAudio = mode
             }
+        case Command.dualConnectionResponse:
+            if let enabled = Messages.parseDualConnection(p) {
+                dualConnectionEnabled = enabled
+            }
+        case Command.dualConnectionListResponse:
+            let list = Messages.parseDualConnectionList(p)
+                        dualDevices = list
+        case Command.dualConnectionPush:
+            // Device connected / disconnected push notification
+            refreshDualConnectionList()
         default:
             break
         }

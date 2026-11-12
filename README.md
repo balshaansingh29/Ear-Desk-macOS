@@ -28,6 +28,9 @@ Built with Nothing's signature dark aesthetic, featuring live battery rings, ful
   - Dedicated **Interactive Custom EQ Slider Modal**: fine-tune dB frequency offsets for Bass (140 Hz), Mid (980 Hz), and Treble with real-time waveform updates and persistent on-device memory.
 - **Spatial Audio Control**:
   - Full support for model-specific spatial audio modes: **Off**, **Fixed**, **Head-Tracked**, **Concert**, and **Theatre**.
+- **Dual Connection (Multipoint Audio)**:
+  - Connect simultaneously to two Bluetooth audio sources (macOS, iOS, Android).
+  - Paired host management directly from the main dashboard and menu bar with active status indicators and toggle controls.
 - **Bass Enhance / Ultra Bass**:
   - Multi-level intensity slider with segmented LED-style visual feedback.
 - **Auto-Connect**:
@@ -67,8 +70,8 @@ Compatible with most Nothing and CMF audio devices communicating over Bluetooth 
 ## 📥 Downloads
 
 Grab the latest pre-built release from the **[Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases)** page:
-- **`Ear-Desk-macOS-v1.4.0.dmg`**: Drag-and-drop disk image installer.
-- **`Ear-Desk-macOS-v1.4.0.zip`**: Standard application archive containing `Ear-Desk.app`.
+- **`Ear-Desk-macOS-v1.5.0.dmg`**: Drag-and-drop disk image installer.
+- **`Ear-Desk-macOS-v1.5.0.zip`**: Standard application archive containing `Ear-Desk.app`.
 
 ---
 

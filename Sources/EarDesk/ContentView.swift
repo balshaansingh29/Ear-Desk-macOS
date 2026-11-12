@@ -451,6 +451,7 @@ struct ControlsView: View {
                 EQSection()
                 if !(ctl.model?.supportedSpatialModes.isEmpty ?? true) { SpatialAudioSection() }
                 if ctl.model?.supportsBassEnhance ?? false { BassSection() }
+                if ctl.model?.supportsDualConnection ?? true { DualConnectionSection() }
                 QuickSettings()
                 FindSection()
             }
@@ -1438,5 +1439,162 @@ struct FindSection: View {
                 .animation(.easeInOut(duration: 0.2), value: isRinging)
             }
         }
+    }
+}
+
+
+// MARK: - Dual Connection Section
+
+struct DualConnectionSection: View {
+    @EnvironmentObject var ctl: EarbudsController
+
+    var body: some View {
+        Card(title: "Dual Connection", icon: "link") {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("MULTIPOINT AUDIO")                            .font(.system(size: 12, weight: .bold, design: .monospaced))                            .tracking(1.2)                            .foregroundStyle(.white)
+                        Text("Connect simultaneously to two Bluetooth audio sources")                            .font(.system(size: 10))                            .foregroundStyle(NothingTheme.textTertiary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { ctl.dualConnectionEnabled },
+                        set: { ctl.setDualConnection($0) }
+                    ))
+                    .toggleStyle(NothingToggleStyle())
+                    .labelsHidden()
+                }
+
+                Divider()
+                    .background(Color.white.opacity(0.08))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Text("PAIRED MULTIPOINT HOSTS")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundStyle(NothingTheme.textSecondary)
+                        Spacer()
+                        Button {
+                            ctl.refreshDualConnectionList()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 9))
+                                Text("REFRESH")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .tracking(1.0)
+                            }
+                            .foregroundStyle(NothingTheme.textSecondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if !ctl.dualConnectionEnabled {
+                        HStack {
+                            Spacer()
+                            Text("Enable Multipoint Audio above to connect two devices simultaneously.")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(NothingTheme.textTertiary)
+                                .multilineTextAlignment(.center)
+                                .padding(.vertical, 8)
+                            Spacer()
+                        }
+                    } else if ctl.dualDevices.isEmpty {
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 4) {
+                                Text("No secondary hosts connected or paired.")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(NothingTheme.textTertiary)
+                                Text("Pair your other device (phone, iPad, laptop) to these earbuds.")
+                                    .font(.system(size: 9.5))
+                                    .foregroundStyle(NothingTheme.textTertiary.opacity(0.8))
+                            }
+                            .padding(.vertical, 8)
+                            Spacer()
+                        }
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(ctl.dualDevices) { dev in
+                                deviceRow(dev)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+
+    private func deviceRow(_ dev: DualDeviceItem) -> some View {
+        HStack(spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+                    .frame(width: 32, height: 32)
+                Image(systemName: dev.isCurrentHost ? "laptopcomputer" : (dev.name.lowercased().contains("phone") || dev.name.lowercased().contains("iphone") ? "iphone" : "headphones"))
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(dev.isConnected ? .white : NothingTheme.textTertiary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(dev.name)
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                    if dev.isCurrentHost {
+                        Text("THIS MAC")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(0.8)
+                            .foregroundStyle(NothingTheme.red)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(NothingTheme.red.opacity(0.12), in: Capsule())
+                    }
+                }
+                HStack(spacing: 6) {
+                    Text(dev.mac)
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(NothingTheme.textTertiary)
+                    if dev.isConnected {
+                        Text("· ACTIVE")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(0.8)
+                            .foregroundStyle(Color(red: 0.2, green: 0.85, blue: 0.4))
+                    }
+                }
+            }
+
+            Spacer()
+
+            if dev.isCurrentHost {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(Color(red: 0.2, green: 0.85, blue: 0.4))
+                        .frame(width: 6, height: 6)
+                    Text("ACTIVE")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.0)
+                        .foregroundStyle(Color(red: 0.2, green: 0.85, blue: 0.4))
+                }
+            } else {
+                Toggle("", isOn: Binding(
+                    get: { dev.isConnected },
+                    set: { shouldConnect in
+                        ctl.setDualDeviceConnected(mac: dev.mac, connect: shouldConnect)
+                    }
+                ))
+                .toggleStyle(NothingToggleStyle())
+                .labelsHidden()
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(NothingTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(NothingTheme.borderSubtle, lineWidth: 1)
+        )
     }
 }

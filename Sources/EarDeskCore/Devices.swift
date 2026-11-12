@@ -65,6 +65,7 @@ public struct DeviceModel {
     public let supportsBassEnhance: Bool
     public let threeStageBass: Bool
     public let supportsInEar: Bool
+    public let supportsDualConnection: Bool
     public let ringStyle: RingStyle
     public let customEQHighShelfFreq: Float
     public let supportedSpatialModes: [SpatialAudioMode]
@@ -78,6 +79,7 @@ public struct DeviceModel {
                 supportsBassEnhance: Bool,
                 threeStageBass: Bool,
                 supportsInEar: Bool,
+                supportsDualConnection: Bool = true,
                 ringStyle: RingStyle,
                 customEQHighShelfFreq: Float = 3500.0,
                 supportedSpatialModes: [SpatialAudioMode] = []) {
@@ -88,6 +90,7 @@ public struct DeviceModel {
         self.supportsBassEnhance = supportsBassEnhance
         self.threeStageBass = threeStageBass
         self.supportsInEar = supportsInEar
+        self.supportsDualConnection = supportsDualConnection
         self.ringStyle = ringStyle
         self.customEQHighShelfFreq = customEQHighShelfFreq
         self.supportedSpatialModes = supportedSpatialModes
@@ -117,6 +120,7 @@ public enum DeviceCatalog {
     static let bassBases: Set<String> = ["B171", "B172", "B195", "B168", "B162", "B184", "B179", "B197", "B170", "B185", "B164", "B173", "B189", "B186"]
     static let threeStageBassBases: Set<String> = ["B189", "B186", "B195", "B197"]
     static let noInEarBases: Set<String> = ["B174", "B185", "B175", "B189", "B186"]
+    static let noDualConnectionBases: Set<String> = ["B181", "B157"] // ear (1) and ear (stick) lack multipoint
     static let headphoneRingBases: Set<String> = ["B170", "B164", "B175", "B186", "B192"]
 
     static let diracPresets: [(name: String, wire: UInt8)] =
@@ -172,6 +176,7 @@ public enum DeviceCatalog {
             supportsBassEnhance: bassBases.contains(base),
             threeStageBass: threeStageBassBases.contains(base),
             supportsInEar: !noInEarBases.contains(base),
+            supportsDualConnection: !noDualConnectionBases.contains(base),
             ringStyle: base == "B181" ? .single : (headphoneRingBases.contains(base) ? .headphone : .perBud),
             customEQHighShelfFreq: highShelfFreq,
             supportedSpatialModes: spatialModes
