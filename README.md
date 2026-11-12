@@ -5,7 +5,7 @@ A lightweight, native SwiftUI app designed specifically for macOS (Apple Silicon
 Built with Nothing's signature dark aesthetic, featuring live battery rings, full Active Noise Cancellation (ANC) switching, Equalizer profiles, Ultra Bass / Bass Enhance toggles, Find My Earbuds, Auto-Connect, and a dynamic menu bar extra with a circular battery gauge.
 
 <p align="center">
-  <img src="docs/assets/ear-desk-screenshot.png" alt="Ear-Desk for macOS showing CMF Headphone Pro controls with Battery Gauge, Noise Control, Equalizer with animated spectrum visualizer, Quick Settings, and Find My Earbuds" width="720" />
+  <img src="docs/assets/ear-desk-screenshot.png" alt="Ear-Desk for macOS showing CMF Headphone Pro controls with Battery Gauge, Noise Control, Equalizer with animated spectrum visualizer, Quick Settings, and Find My Earbuds" width="480" />
 </p>
 
 ---
