@@ -125,27 +125,71 @@ struct NothingToggleStyle: ToggleStyle {
 
 struct ContentView: View {
     @EnvironmentObject var ctl: EarbudsController
+    @EnvironmentObject var updater: AppUpdater
     @AppStorage("hasPromptedLaunchAtLogin") private var hasPromptedLaunchAtLogin: Bool = false
     @State private var showPromptSheet: Bool = false
 
     var body: some View {
-        ZStack {
-            if ctl.link == .connected {
-                ControlsView()
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 0.98)).combined(with: .offset(y: 8)),
-                            removal: .opacity.combined(with: .scale(scale: 1.02))
+        VStack(spacing: 0) {
+            // Update Banner (shows when newer release is available)
+            if case .updateAvailable(let version, _, let dlUrl) = updater.status {
+                HStack(spacing: 10) {
+                    Circle()
+                        .fill(NothingTheme.red)
+                        .frame(width: 6, height: 6)
+
+                    Text("UPDATE AVAILABLE: v\(version)")
+                        .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(.white)
+
+                    Spacer()
+
+                    Button {
+                        Task {
+                            await updater.downloadAndInstall(url: dlUrl)
+                        }
+                    } label: {
+                        Text("UPDATE & RESTART")
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .tracking(1.0)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(red: 22/255, green: 22/255, blue: 24/255))
+                .overlay(
+                    Rectangle()
+                        .frame(height: 1)
+                        .foregroundStyle(Color.white.opacity(0.08)),
+                    alignment: .bottom
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
+            ZStack {
+                if ctl.link == .connected {
+                    ControlsView()
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 0.98)).combined(with: .offset(y: 8)),
+                                removal: .opacity.combined(with: .scale(scale: 1.02))
+                            )
                         )
-                    )
-            } else {
-                ConnectView()
-                    .transition(
-                        .asymmetric(
-                            insertion: .opacity.combined(with: .scale(scale: 1.02)),
-                            removal: .opacity.combined(with: .scale(scale: 0.98)).combined(with: .offset(y: -8))
+                } else {
+                    ConnectView()
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .scale(scale: 1.02)),
+                                removal: .opacity.combined(with: .scale(scale: 0.98)).combined(with: .offset(y: -8))
+                            )
                         )
-                    )
+                }
             }
         }
         .animation(.spring(response: 0.38, dampingFraction: 0.82), value: ctl.link == .connected)
@@ -159,6 +203,18 @@ struct ContentView: View {
             })
             .environmentObject(ctl)
         }
+        .sheet(isPresented: Binding(
+            get: {
+                if case .downloading = updater.status { return true }
+                if case .installing = updater.status { return true }
+                if case .readyToRestart = updater.status { return true }
+                return false
+            },
+            set: { _ in }
+        )) {
+            UpdateProgressModal()
+                .environmentObject(updater)
+        }
         .onAppear {
             if !hasPromptedLaunchAtLogin {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
@@ -166,6 +222,10 @@ struct ContentView: View {
                         showPromptSheet = true
                     }
                 }
+            }
+            // Background check for updates on startup
+            Task {
+                await updater.checkForUpdates()
             }
         }
     }
@@ -1596,5 +1656,177 @@ struct DualConnectionSection: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(NothingTheme.borderSubtle, lineWidth: 1)
         )
+    }
+}
+
+// MARK: - Reactive Animated Installer Modal for Self-Updating
+
+struct UpdateProgressModal: View {
+    @EnvironmentObject var updater: AppUpdater
+    @State private var rotatePhase: Double = 0
+    @State private var pulse: Bool = false
+
+    private var progressValue: Double {
+        updater.downloadProgress
+    }
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer(minLength: 4)
+
+            // Animated Glyph-Style Installer Graphic with Reactive Progress Ring
+            ZStack {
+                // Background Track
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 3)
+                    .frame(width: 96, height: 96)
+
+                // Reactive Progress Arc (Reacts directly to real download progress)
+                if progressValue > 0 {
+                    Circle()
+                        .trim(from: 0.0, to: CGFloat(min(max(progressValue, 0.02), 1.0)))
+                        .stroke(
+                            NothingTheme.red,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .rotationEffect(.degrees(-90))
+                        .frame(width: 96, height: 96)
+                        .animation(.easeOut(duration: 0.25), value: progressValue)
+                }
+
+                // Rotating ambient dotted ring
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [4, 8]))
+                    .frame(width: 80, height: 80)
+                    .rotationEffect(.degrees(rotatePhase))
+
+                // Reactive Inner Center
+                Circle()
+                    .fill(Color.white.opacity(0.04))
+                    .frame(width: 62, height: 62)
+                    .scaleEffect(pulse ? 1.04 : 0.96)
+                    .overlay(
+                        Circle().strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+
+                if case .readyToRestart = updater.status {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 24, weight: .bold))
+                        .foregroundStyle(Color.green)
+                        .transition(.scale.combined(with: .opacity))
+                } else if case .installing = updater.status {
+                    Image(systemName: "gearshape.2.fill")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(NothingTheme.red)
+                        .rotationEffect(.degrees(rotatePhase * 1.5))
+                } else {
+                    Image(systemName: "arrow.down.app.fill")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(.white)
+                }
+            }
+            .onAppear {
+                withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
+                    rotatePhase = 360
+                }
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                    pulse = true
+                }
+            }
+
+            // Status Text Reactive Switcher
+            VStack(spacing: 6) {
+                switch updater.status {
+                case .downloading:
+                    HStack(spacing: 6) {
+                        Text("DOWNLOADING")
+                            .font(.system(size: 13, weight: .bold, design: .monospaced))
+                            .tracking(2.0)
+                            .foregroundStyle(.white)
+                        if progressValue > 0 {
+                            Text("\(Int(progressValue * 100))%")
+                                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                .foregroundStyle(NothingTheme.red)
+                        }
+                    }
+                    Text("Streaming latest release package from GitHub…")
+                        .font(.system(size: 11))
+                        .foregroundStyle(NothingTheme.textSecondary)
+
+                case .installing(let step):
+                    Text("INSTALLING")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .tracking(2.0)
+                        .foregroundStyle(.white)
+                    Text(step)
+                        .font(.system(size: 11))
+                        .foregroundStyle(NothingTheme.textSecondary)
+
+                case .readyToRestart:
+                    Text("RESTARTING")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .tracking(2.0)
+                        .foregroundStyle(Color.green)
+                    Text("Ear-Desk is relaunching with the latest version.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(NothingTheme.textSecondary)
+
+                default:
+                    EmptyView()
+                }
+            }
+
+            // Reactive Horizontal Progress Bar
+            VStack(spacing: 6) {
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 260, height: 4)
+
+                    if case .downloading = updater.status {
+                        Capsule()
+                            .fill(NothingTheme.red)
+                            .frame(width: max(4, 260 * CGFloat(min(progressValue, 1.0))), height: 4)
+                            .animation(.easeOut(duration: 0.2), value: progressValue)
+                    } else if case .installing = updater.status {
+                        Capsule()
+                            .fill(Color.white)
+                            .frame(width: 260, height: 4)
+                            .overlay(
+                                Capsule()
+                                    .fill(NothingTheme.red)
+                                    .scaleEffect(x: pulse ? 1.0 : 0.6, y: 1.0)
+                                    .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+                            )
+                    } else {
+                        Capsule()
+                            .fill(Color.green)
+                            .frame(width: 260, height: 4)
+                    }
+                }
+
+                // Dot matrix indicator lights
+                HStack(spacing: 8) {
+                    ForEach(0..<9) { idx in
+                        let active = (Double(idx) / 8.0) <= progressValue
+                        Circle()
+                            .fill(active ? NothingTheme.red : Color.white.opacity(0.12))
+                            .frame(width: 4, height: 4)
+                            .animation(.easeOut(duration: 0.2), value: progressValue)
+                    }
+                }
+                .padding(.top, 4)
+            }
+
+            Spacer(minLength: 4)
+        }
+        .padding(24)
+        .frame(width: 380, height: 280)
+        .background(NothingTheme.bg)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .strokeBorder(NothingTheme.border, lineWidth: 1)
+        )
+        .preferredColorScheme(.dark)
     }
 }

@@ -5,22 +5,38 @@ import EarDeskCore
 @main
 struct EarDeskApp: App {
     @StateObject private var controller = EarbudsController()
+    @StateObject private var updater = AppUpdater.shared
 
     var body: some Scene {
         WindowGroup("Ear-Desk") {
-            ContentView().environmentObject(controller)
+            ContentView()
+                .environmentObject(controller)
+                .environmentObject(updater)
         }
         .windowResizability(.contentMinSize)
         Settings {
-            SettingsView().environmentObject(controller)
+            SettingsView()
+                .environmentObject(controller)
+                .environmentObject(updater)
         }
         .commands {
             // Remove the macOS system "Services" menu
             CommandGroup(replacing: .systemServices) {}
+
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    Task {
+                        await updater.checkForUpdates(manual: true)
+                    }
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                }
+            }
         }
 
         MenuBarExtra {
-            MenuContent().environmentObject(controller)
+            MenuContent()
+                .environmentObject(controller)
+                .environmentObject(updater)
         } label: {
             if let image = controller.menuBarIcon {
                 Image(nsImage: image)
@@ -33,6 +49,7 @@ struct EarDeskApp: App {
 
 struct MenuContent: View {
     @EnvironmentObject var ctl: EarbudsController
+    @EnvironmentObject var updater: AppUpdater
 
     private func bringAppToFront() {
         // Bring macOS app process to the front
@@ -248,6 +265,14 @@ struct MenuContent: View {
 
         Divider()
         Toggle("Launch at Login", isOn: Binding(get: { ctl.launchAtLogin }, set: ctl.setLaunchAtLogin))
+
+        if case .updateAvailable(let ver, _, _) = updater.status {
+            Divider()
+            Button("✨ Update Available (v\(ver))") {
+                bringAppToFront()
+            }
+        }
+
         Divider()
         Button("Quit Ear-Desk") { NSApplication.shared.terminate(nil) }
             .keyboardShortcut("q")
@@ -258,6 +283,7 @@ struct MenuContent: View {
 
 struct SettingsView: View {
     @EnvironmentObject var ctl: EarbudsController
+    @EnvironmentObject var updater: AppUpdater
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.5.0"
@@ -316,6 +342,105 @@ struct SettingsView: View {
                         set: { ctl.setNotifyLowBattery($0) }
                     )
                 )
+            }
+
+            Divider()
+
+            // Software Updates Section
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Software Updates")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.white)
+                        if let lastChecked = updater.lastChecked {
+                            Text("Last checked: \(lastChecked.formatted(date: .omitted, time: .shortened))")
+                                .font(.system(size: 10))
+                                .foregroundStyle(NothingTheme.textSecondary)
+                        } else {
+                            Text("Check GitHub releases for updates")
+                                .font(.system(size: 10))
+                                .foregroundStyle(NothingTheme.textSecondary)
+                        }
+                    }
+                    Spacer()
+
+                    switch updater.status {
+                    case .checking:
+                        ProgressView().controlSize(.small)
+                    case .downloading, .installing:
+                        ProgressView().controlSize(.small)
+                    default:
+                        Button("Check Now") {
+                            Task {
+                                await updater.checkForUpdates(manual: true)
+                            }
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                    }
+                }
+
+                switch updater.status {
+                case .upToDate:
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(Color.green)
+                            .font(.system(size: 11))
+                        Text("Ear-Desk is up to date (v\(updater.currentVersion)).")
+                            .font(.system(size: 10))
+                            .foregroundStyle(NothingTheme.textSecondary)
+                    }
+                case .updateAvailable(let version, _, let downloadUrl):
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(NothingTheme.red)
+                            .frame(width: 6, height: 6)
+                        Text("Version \(version) is available!")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Button("Update Now") {
+                            Task {
+                                await updater.downloadAndInstall(url: downloadUrl)
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(NothingTheme.red)
+                        .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+
+                case .downloading:
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Downloading update from GitHub…")
+                            .font(.system(size: 10))
+                            .foregroundStyle(NothingTheme.textSecondary)
+                    }
+                case .installing:
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Installing and relaunching…")
+                            .font(.system(size: 10))
+                            .foregroundStyle(NothingTheme.textSecondary)
+                    }
+                case .readyToRestart:
+                    Text("Restarting Ear-Desk…")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.green)
+                case .failed(let err):
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(NothingTheme.red)
+                            .font(.system(size: 11))
+                        Text(err)
+                            .font(.system(size: 10))
+                            .foregroundStyle(NothingTheme.red.opacity(0.9))
+                    }
+                default:
+                    EmptyView()
+                }
             }
 
             Divider()

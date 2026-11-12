@@ -57,29 +57,30 @@ try:
     os.makedirs(bg_dir, exist_ok=True)
     if os.path.exists(bg_img):
         subprocess.run(["cp", bg_img, f"{bg_dir}/background.png"], check=True)
+        bg_target_posix = f"{bg_dir}/background.png"
         applescript = f"""
         tell application "Finder"
             tell disk "{vol_name}"
                 open
+                delay 1
                 set current view of container window to icon view
                 set toolbar visible of container window to false
                 set statusbar visible of container window to false
-                set the bounds of container window to {{400, 100, 1060, 500}}
+                set the bounds of container window to {{360, 160, 1040, 600}}
                 set viewOptions to the icon view options of container window
                 set arrangement of viewOptions to not arranged
-                set icon size of viewOptions to 100
-                set background picture of viewOptions to file ".background:background.png"
-                set position of item "Ear-Desk.app" of container window to {{170, 200}}
-                set position of item "Applications" of container window to {{490, 200}}
-                close
-                open
+                set icon size of viewOptions to 105
+                set background picture of viewOptions to (POSIX file "{bg_target_posix}" as alias)
+                set position of item "Ear-Desk.app" of container window to {{170, 230}}
+                set position of item "Applications" of container window to {{510, 230}}
                 update without registering applications
-                delay 1
+                delay 2
                 close
             end tell
         end tell
         """
         subprocess.run(["osascript", "-e", applescript])
+        time.sleep(2)
 finally:
     subprocess.run(["hdiutil", "detach", mount_point, "-force"])
 
