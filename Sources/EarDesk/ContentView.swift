@@ -203,17 +203,27 @@ struct ContentView: View {
             })
             .environmentObject(ctl)
         }
-        .sheet(isPresented: Binding(
-            get: {
-                if case .downloading = updater.status { return true }
-                if case .installing = updater.status { return true }
-                if case .readyToRestart = updater.status { return true }
-                return false
-            },
-            set: { _ in }
-        )) {
-            UpdateProgressModal()
-                .environmentObject(updater)
+        .overlay {
+            let isUpdating: Bool = {
+                switch updater.status {
+                case .downloading, .installing, .readyToRestart:
+                    return true
+                default:
+                    return false
+                }
+            }()
+
+            if isUpdating {
+                ZStack {
+                    // Dark, fixed backdrop pinning the background window securely
+                    Color.black.opacity(0.85)
+                        .ignoresSafeArea()
+
+                    UpdateProgressModal()
+                        .environmentObject(updater)
+                }
+                .transition(.opacity)
+            }
         }
         .onAppear {
             if !hasPromptedLaunchAtLogin {
@@ -1822,11 +1832,15 @@ struct UpdateProgressModal: View {
         }
         .padding(24)
         .frame(width: 380, height: 280)
-        .background(NothingTheme.bg)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(NothingTheme.bg)
+        )
         .overlay(
             RoundedRectangle(cornerRadius: 16)
                 .strokeBorder(NothingTheme.border, lineWidth: 1)
         )
+        .shadow(color: Color.black.opacity(0.6), radius: 25, x: 0, y: 10)
         .preferredColorScheme(.dark)
     }
 }

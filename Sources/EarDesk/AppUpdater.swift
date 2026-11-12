@@ -26,7 +26,7 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
     private var tempDownloadDir: URL?
 
     public var currentVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6.1"
     }
 
     public override init() {
@@ -115,6 +115,10 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
             let isAppBundle = currentAppBundle.pathExtension == "app"
             let targetInstallPath = isAppBundle ? currentAppBundle.path : "/Applications/Ear-Desk.app"
 
+            let stagingDir = tempDir.appendingPathComponent("staging")
+            try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+            let finalStagedApp = stagingDir.appendingPathComponent("Ear-Desk.app")
+
             if destArchive.pathExtension == "zip" {
                 let unzipDir = tempDir.appendingPathComponent("extracted")
                 try FileManager.default.createDirectory(at: unzipDir, withIntermediateDirectories: true)
@@ -131,9 +135,11 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
                     return
                 }
 
+                let extractedAppURL = unzipDir.appendingPathComponent(appFolder)
+                try FileManager.default.copyItem(at: extractedAppURL, to: finalStagedApp)
+
                 status = .installing(step: "Verifying binary…")
-                let newAppPath = unzipDir.appendingPathComponent(appFolder).path
-                performSelfReplacement(from: newAppPath, to: targetInstallPath)
+                performSelfReplacement(from: finalStagedApp.path, to: targetInstallPath)
             } else if destArchive.pathExtension == "dmg" {
                 let mountPoint = tempDir.appendingPathComponent("mount")
                 try FileManager.default.createDirectory(at: mountPoint, withIntermediateDirectories: true)
@@ -144,23 +150,28 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
                 try hdiProcess.run()
                 hdiProcess.waitUntilExit()
 
-                defer {
+                let mountedItems = (try? FileManager.default.contentsOfDirectory(atPath: mountPoint.path)) ?? []
+                guard let appFolder = mountedItems.first(where: { $0.hasSuffix(".app") }) else {
+                    status = .failed(error: "DMG does not contain Ear-Desk.app")
                     let detach = Process()
                     detach.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
                     detach.arguments = ["detach", mountPoint.path, "-quiet", "-force"]
                     try? detach.run()
                     detach.waitUntilExit()
-                }
-
-                let mountedItems = (try? FileManager.default.contentsOfDirectory(atPath: mountPoint.path)) ?? []
-                guard let appFolder = mountedItems.first(where: { $0.hasSuffix(".app") }) else {
-                    status = .failed(error: "DMG does not contain Ear-Desk.app")
                     return
                 }
 
+                let mountedAppURL = mountPoint.appendingPathComponent(appFolder)
+                try FileManager.default.copyItem(at: mountedAppURL, to: finalStagedApp)
+
+                let detach = Process()
+                detach.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
+                detach.arguments = ["detach", mountPoint.path, "-quiet", "-force"]
+                try? detach.run()
+                detach.waitUntilExit()
+
                 status = .installing(step: "Verifying binary…")
-                let newAppPath = mountPoint.appendingPathComponent(appFolder).path
-                performSelfReplacement(from: newAppPath, to: targetInstallPath)
+                performSelfReplacement(from: finalStagedApp.path, to: targetInstallPath)
             }
         } catch {
             status = .failed(error: "Update failed: \(error.localizedDescription)")
@@ -194,18 +205,29 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
         }
     }
 
-    /// Writes helper script to swap old app with new app and relaunch
+    /// Writes standalone helper script to cleanly replace old app bundle and relaunch with process disowning
     private func performSelfReplacement(from sourceAppPath: String, to targetAppPath: String) {
+        let pid = ProcessInfo.processInfo.processIdentifier
         let scriptPath = FileManager.default.temporaryDirectory
             .appendingPathComponent("eardesk_update_\(UUID().uuidString).sh")
 
         let scriptContent = """
         #!/bin/bash
-        sleep 1.2
+        # Wait until the calling app process has fully exited
+        while kill -0 \(pid) 2>/dev/null; do
+            sleep 0.2
+        done
+        sleep 0.5
+
+        # In-place atomic app replacement
         rm -rf "\(targetAppPath)"
         cp -R "\(sourceAppPath)" "\(targetAppPath)"
         xattr -rd com.apple.quarantine "\(targetAppPath)" 2>/dev/null || true
-        open -a "\(targetAppPath)"
+
+        # Relaunch newly installed app
+        open "\(targetAppPath)"
+
+        # Self-destruct update helper script
         rm -- "$0"
         """
 
@@ -219,11 +241,13 @@ public final class AppUpdater: NSObject, ObservableObject, URLSessionDownloadDel
 
             status = .readyToRestart(appPath: targetAppPath)
 
+            // Spawn detached bash process running in background independently of this app
             let launchTask = Process()
-            launchTask.executableURL = scriptPath
+            launchTask.executableURL = URL(fileURLWithPath: "/bin/bash")
+            launchTask.arguments = [scriptPath.path]
             try launchTask.run()
 
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 NSApplication.shared.terminate(nil)
             }
         } catch {

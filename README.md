@@ -80,12 +80,12 @@ Ear-Desk automatically detects and displays authentic hardware renders for:
 ### Option 1: Drag-and-Drop DMG (Recommended) 💿
 Download the latest pre-compiled installer from [GitHub Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/latest):
 
-1. Download **[`Ear-Desk-macOS-v1.6.0.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.6.0/Ear-Desk-macOS-v1.6.0.dmg)**.
+1. Download **[`Ear-Desk-macOS-v1.6.1.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.6.1/Ear-Desk-macOS-v1.6.1.dmg)**.
 2. Open the disk image and drag **`Ear-Desk.app`** into **`Applications`**.
 3. Launch **Ear-Desk** and approve the Bluetooth permission request when prompted.
 
 ### Option 2: Portable ZIP Archive 📁
-- Download **[`Ear-Desk-macOS-v1.6.0.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.6.0/Ear-Desk-macOS-v1.6.0.zip)**, unzip, and launch directly.
+- Download **[`Ear-Desk-macOS-v1.6.1.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.6.1/Ear-Desk-macOS-v1.6.1.zip)**, unzip, and launch directly.
 
 ---
 
