@@ -449,6 +449,7 @@ struct ControlsView: View {
                 BatteryView(info: ctl.battery)
                 if ctl.model?.hasANC ?? true { ANCSection() }
                 EQSection()
+                if !(ctl.model?.supportedSpatialModes.isEmpty ?? true) { SpatialAudioSection() }
                 if ctl.model?.supportsBassEnhance ?? false { BassSection() }
                 QuickSettings()
                 FindSection()
@@ -789,9 +790,39 @@ struct ANCSection: View {
 
 struct EQVisualizerView: View {
     let presetName: String
+    var customEQ: CustomEQ? = nil
 
     // 16-band spectrum waveform
     private var barHeights: [CGFloat] {
+        if presetName.lowercased() == "custom", let c = customEQ {
+            // Modulate 16 bands based on Bass (bands 0..4), Mid (bands 5..10), Treble (bands 11..15)
+            // Values are between -6 and +6 dB -> mapped into offset factors
+            let bFactor = CGFloat(c.bass) / 12.0      // -0.5 ... +0.5
+            let mFactor = CGFloat(c.mid) / 12.0       // -0.5 ... +0.5
+            let tFactor = CGFloat(c.treble) / 12.0    // -0.5 ... +0.5
+
+            let base: [CGFloat] = [
+                0.50, 0.48, 0.46, 0.45, 0.46,
+                0.48, 0.50, 0.52, 0.52, 0.50, 0.48,
+                0.46, 0.47, 0.49, 0.51, 0.52
+            ]
+
+            return base.enumerated().map { i, val in
+                var adjusted = val
+                if i <= 4 {
+                    let weight = 1.0 - (CGFloat(i) * 0.15)
+                    adjusted += bFactor * weight
+                } else if i >= 11 {
+                    let weight = 0.4 + (CGFloat(i - 11) * 0.15)
+                    adjusted += tFactor * weight
+                } else {
+                    let weight = 1.0 - abs(CGFloat(i) - 7.5) * 0.2
+                    adjusted += mFactor * weight
+                }
+                return max(0.08, min(1.0, adjusted))
+            }
+        }
+
         switch presetName.lowercased() {
         case "more bass":
             return [1.0, 0.94, 0.84, 0.72, 0.58, 0.46, 0.36, 0.28, 0.24, 0.20, 0.18, 0.16, 0.15, 0.14, 0.13, 0.12]
@@ -870,13 +901,185 @@ struct EQVisualizerView: View {
     }
 }
 
+// MARK: - Custom EQ Modal Sheet
+
+struct CustomEQSheet: View {
+    @EnvironmentObject var ctl: EarbudsController
+    @Binding var isPresented: Bool
+
+    @State private var bass: Double = 0
+    @State private var mid: Double = 0
+    @State private var treble: Double = 0
+
+    var body: some View {
+        VStack(spacing: 20) {
+            // Header
+            HStack(alignment: .center) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(NothingTheme.red)
+                        .frame(width: 6, height: 6)
+                    Text("CUSTOM EQUALIZER")
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.white)
+                }
+                Spacer()
+                Button {
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(NothingTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text("Fine-tune acoustic frequency responses from -6 dB to +6 dB.")
+                .font(.system(size: 11))
+                .foregroundStyle(NothingTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            // Waveform live preview with current custom sliders
+            EQVisualizerView(presetName: "custom", customEQ: CustomEQ(bass: Int(bass), mid: Int(mid), treble: Int(treble)))
+                .frame(height: 70)
+
+            // 3 Vertical/Horizontal Band Tuning Sliders
+            HStack(spacing: 16) {
+                BandSlider(title: "BASS", subtitle: "140 Hz", value: $bass) {
+                    applyBands()
+                }
+                BandSlider(title: "MID", subtitle: "980 Hz", value: $mid) {
+                    applyBands()
+                }
+                BandSlider(title: "TREBLE", subtitle: "\(Int(ctl.model?.customEQHighShelfFreq ?? 3500)) Hz", value: $treble) {
+                    applyBands()
+                }
+            }
+            .padding(.vertical, 8)
+
+            // Footer controls
+            HStack {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        bass = 0
+                        mid = 0
+                        treble = 0
+                    }
+                    applyBands()
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.counterclockwise")
+                            .font(.system(size: 10))
+                        Text("RESET FLAT")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.0)
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .background(Color.white.opacity(0.04), in: Capsule())
+                    .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Button {
+                    applyBands()
+                    ctl.setEQ(wire: 6)
+                    isPresented = false
+                } label: {
+                    Text("APPLY & SAVE")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(.black)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 8)
+                        .background(Color.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(22)
+        .frame(width: 360)
+        .background(NothingTheme.bg)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(NothingTheme.border, lineWidth: 1)
+        )
+        .onAppear {
+            bass = Double(ctl.customEQ.bass)
+            mid = Double(ctl.customEQ.mid)
+            treble = Double(ctl.customEQ.treble)
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func applyBands() {
+        ctl.setCustomEQBands(bass: Int(bass), mid: Int(mid), treble: Int(treble))
+    }
+}
+
+struct BandSlider: View {
+    let title: String
+    let subtitle: String
+    @Binding var value: Double
+    let onChange: () -> Void
+
+    var body: some View {
+        VStack(spacing: 8) {
+            // Title & frequency
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(1.0)
+                    .foregroundStyle(.white)
+                Text(subtitle)
+                    .font(.system(size: 8.5, design: .monospaced))
+                    .foregroundStyle(NothingTheme.textTertiary)
+            }
+
+            // dB value badge
+            Text(value > 0 ? "+\(Int(value)) dB" : "\(Int(value)) dB")
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(value == 0 ? NothingTheme.textSecondary : (value > 0 ? NothingTheme.red : Color.white))
+                .padding(.vertical, 3)
+                .padding(.horizontal, 6)
+                .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 5))
+
+            // Custom styled slider
+            Slider(value: $value, in: -6...6, step: 1) {
+                Text(title)
+            }
+            .labelsHidden()
+            .tint(NothingTheme.red)
+            .onChange(of: value) { _ in
+                onChange()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.02))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(NothingTheme.borderSubtle, lineWidth: 1)
+                )
+        )
+    }
+}
+
 struct EQSection: View {
     @EnvironmentObject var ctl: EarbudsController
+    @State private var showCustomModal = false
 
     private var presets: [(name: String, wire: UInt8)] {
         switch ctl.model?.eqStyle {
         case .listeningMode(let p)?: return p
-        default: return [("Balanced", 0), ("More Voice", 1), ("More Treble", 2), ("More Bass", 3)]
+        default: return [("Balanced", 0), ("More Voice", 1), ("More Treble", 2), ("More Bass", 3), ("Custom", 6)]
         }
     }
 
@@ -892,8 +1095,12 @@ struct EQSection: View {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)], spacing: 8) {
                         ForEach(presets, id: \.wire) { preset in
                             let isSelected = ctl.eqWire == preset.wire
+                            let isCustom = preset.name.lowercased() == "custom"
                             Button {
                                 ctl.setEQ(wire: preset.wire)
+                                if isCustom {
+                                    showCustomModal = true
+                                }
                             } label: {
                                 HStack(spacing: 5) {
                                     if isSelected {
@@ -905,6 +1112,12 @@ struct EQSection: View {
                                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                                         .tracking(0.8)
                                         .lineLimit(1)
+
+                                    if isCustom {
+                                        Image(systemName: "slider.vertical.3")
+                                            .font(.system(size: 8))
+                                            .foregroundStyle(isSelected ? .black.opacity(0.7) : NothingTheme.textTertiary)
+                                    }
                                 }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 9)
@@ -926,15 +1139,38 @@ struct EQSection: View {
                     .frame(maxWidth: .infinity)
 
                     // Waveform on the right of buttons
-                    EQVisualizerView(presetName: activePresetName)
+                    EQVisualizerView(presetName: activePresetName, customEQ: ctl.customEQ)
                         .frame(width: 130)
                 }
 
-                if ctl.eqWire == 5 || ctl.eqWire == 6 {
+                if ctl.eqWire == 6 {
+                    HStack(spacing: 8) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 10))
+                            .foregroundStyle(NothingTheme.red)
+                        Text("B: \(ctl.customEQ.bass >= 0 ? "+" : "")\(ctl.customEQ.bass)dB  ·  M: \(ctl.customEQ.mid >= 0 ? "+" : "")\(ctl.customEQ.mid)dB  ·  T: \(ctl.customEQ.treble >= 0 ? "+" : "")\(ctl.customEQ.treble)dB")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(NothingTheme.textSecondary)
+                        Spacer()
+                        Button {
+                            showCustomModal = true
+                        } label: {
+                            Text("TUNE")
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(0.8)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 4)
+                } else if ctl.eqWire == 5 {
                     HStack(spacing: 6) {
                         Image(systemName: "info.circle")
                             .font(.system(size: 10))
-                        Text("A custom or advanced EQ profile is active on the earbuds.")
+                        Text("Classical acoustic preset profile is active.")
                             .font(.system(size: 10, design: .monospaced))
                     }
                     .foregroundStyle(NothingTheme.textTertiary)
@@ -942,10 +1178,95 @@ struct EQSection: View {
                 }
             }
         }
+        .sheet(isPresented: $showCustomModal) {
+            CustomEQSheet(isPresented: $showCustomModal)
+                .environmentObject(ctl)
+        }
     }
 }
 
-// MARK: - Bass Section
+
+// MARK: - Spatial Audio Section
+
+struct SpatialAudioSection: View {
+    @EnvironmentObject var ctl: EarbudsController
+
+    private var modes: [SpatialAudioMode] {
+        ctl.model?.supportedSpatialModes ?? [.off, .fixed]
+    }
+
+    private func iconForMode(_ mode: SpatialAudioMode) -> String {
+        switch mode {
+        case .off: return "speaker.slash"
+        case .fixed: return "speaker.wave.2"
+        case .headTracked: return "person.crop.circle"
+        case .concert: return "music.note.house"
+        case .theatre: return "film"
+        }
+    }
+
+    private func subtitleForMode(_ mode: SpatialAudioMode) -> String {
+        switch mode {
+        case .off: return "Standard stereo audio without spatialization"
+        case .fixed: return "3D spatial immersion anchored to soundstage"
+        case .headTracked: return "Dynamic soundstage matching head rotation"
+        case .concert: return "Simulated wide acoustic concert hall acoustics"
+        case .theatre: return "Surround cinematic immersion with enhanced width"
+        }
+    }
+
+    var body: some View {
+        Card(title: "Spatial Audio", icon: "waveform.and.person.filled") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    ForEach(modes) { mode in
+                        let isSelected = ctl.spatialAudio == mode
+                        Button {
+                            ctl.setSpatialAudio(mode)
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSelected {
+                                    Circle()
+                                        .fill(NothingTheme.red)
+                                        .frame(width: 4, height: 4)
+                                }
+                                Image(systemName: iconForMode(mode))
+                                    .font(.system(size: 9))
+                                Text(mode.title.uppercased())
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .tracking(0.8)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 9)
+                            .foregroundStyle(isSelected ? .black : .white)
+                            .background(
+                                isSelected ? Color.white : NothingTheme.surface,
+                                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .strokeBorder(isSelected ? Color.clear : NothingTheme.border, lineWidth: 1)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .animation(.easeInOut(duration: 0.16), value: isSelected)
+                    }
+                }
+
+                // Subtitle description of active mode
+                HStack(spacing: 6) {
+                    Image(systemName: iconForMode(ctl.spatialAudio))
+                        .font(.system(size: 10))
+                        .foregroundStyle(ctl.spatialAudio == .off ? NothingTheme.textTertiary : NothingTheme.red)
+                    Text(subtitleForMode(ctl.spatialAudio))
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(NothingTheme.textTertiary)
+                }
+                .padding(.top, 2)
+            }
+        }
+    }
+}
 
 struct BassSection: View {
     @EnvironmentObject var ctl: EarbudsController

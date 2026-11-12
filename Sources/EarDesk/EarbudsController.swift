@@ -1,22 +1,9 @@
-import UserNotifications
-import ServiceManagement
-import Foundation
+import Cocoa
 import IOBluetooth
 import SwiftUI
+import ServiceManagement
+import UserNotifications
 import EarDeskCore
-
-struct PairedDevice: Identifiable, Hashable {
-    let id: String          // Bluetooth address
-    let name: String
-    let isConnected: Bool
-}
-
-enum LinkState: Equatable {
-    case idle
-    case connecting
-    case connected
-    case failed(String)
-}
 
 struct MenuBarBatteryIconView: View {
     let batteryLevel: Double
@@ -37,7 +24,7 @@ struct MenuBarBatteryIconView: View {
                 .frame(width: 17, height: 17)
 
             Image(systemName: iconName)
-                .font(.system(size: iconName == "headphones" ? 7.5 : 8, weight: .medium))
+                .font(.system(size: 8, weight: .medium))
                 .foregroundColor(.black)
         }
         .frame(width: 20, height: 20)
@@ -46,6 +33,19 @@ struct MenuBarBatteryIconView: View {
 
 @MainActor
 final class EarbudsController: ObservableObject {
+    struct PairedDevice: Identifiable, Equatable {
+        let id: String
+        let name: String
+        let isConnected: Bool
+    }
+
+    enum LinkState: Equatable {
+        case idle
+        case connecting
+        case connected
+        case failed(String)
+    }
+
     // Discovery
     @Published var pairedDevices: [PairedDevice] = []
     @Published var selectedAddress: String?
@@ -60,12 +60,14 @@ final class EarbudsController: ObservableObject {
     @Published var battery = BatteryInfo()
     @Published var anc: ANCMode?
     @Published var eqWire: UInt8?
+    @Published var customEQ = CustomEQ()
     @Published var firmware: String = ""
     @Published var inEarDetection: Bool = false
     @Published var lowLatency: Bool = false
     @Published var bassEnabled: Bool = false
     @Published var bassLevel: Int = 0
     @Published var ringing: (left: Bool, right: Bool) = (false, false)
+    @Published var spatialAudio: SpatialAudioMode = .off
     @Published var menuBarIcon: NSImage?
 
     private var lastMenuBarBatteryUpdate: Date?
@@ -87,9 +89,24 @@ final class EarbudsController: ObservableObject {
         transport.onOpen = { [weak self] in self?.didOpen() }
         transport.onData = { [weak self] bytes in self?.didReceive(bytes) }
         transport.onClose = { [weak self] message in self?.didClose(message) }
+        loadPersistedCustomEQ()
         refreshDevices()
         setupAutoConnectObserver()
         requestNotificationPermission()
+    }
+
+    // MARK: - Persistence for Custom EQ
+    private func loadPersistedCustomEQ() {
+        let b = UserDefaults.standard.object(forKey: "customEQ_bass") as? Int ?? 0
+        let m = UserDefaults.standard.object(forKey: "customEQ_mid") as? Int ?? 0
+        let t = UserDefaults.standard.object(forKey: "customEQ_treble") as? Int ?? 0
+        customEQ = CustomEQ(bass: b, mid: m, treble: t)
+    }
+
+    private func savePersistedCustomEQ() {
+        UserDefaults.standard.set(customEQ.bass, forKey: "customEQ_bass")
+        UserDefaults.standard.set(customEQ.mid, forKey: "customEQ_mid")
+        UserDefaults.standard.set(customEQ.treble, forKey: "customEQ_treble")
     }
 
     // MARK: Discovery
@@ -155,6 +172,8 @@ final class EarbudsController: ObservableObject {
         steps.append((Command.getLatency, []))
         if model?.hasANC ?? true { steps.append((Command.getANC, [])) }
         if model?.supportsBassEnhance ?? false { steps.append((Command.getBass, [])) }
+        if !(model?.supportedSpatialModes.isEmpty ?? true) { steps.append((Command.getSpatialAudio, [])) }
+        steps.append((Command.getCustomEQ, []))
         for (cmd, payload) in steps {
             send(cmd, payload)
             try? await Task.sleep(nanoseconds: 100_000_000)
@@ -351,6 +370,21 @@ final class EarbudsController: ObservableObject {
     func setEQ(wire: UInt8) {
         eqWire = wire
         send(isListeningMode ? Messages.setListeningMode(wire) : Messages.setEQ(wire))
+        if wire == 6 {
+            send(Command.getCustomEQ, [])
+        }
+    }
+
+    func setCustomEQBands(bass: Int, mid: Int, treble: Int) {
+        customEQ = CustomEQ(bass: bass, mid: mid, treble: treble)
+        savePersistedCustomEQ()
+        let freq = model?.customEQHighShelfFreq ?? 3500.0
+        send(Messages.setCustomEQ(bass: bass, mid: mid, treble: treble, highShelfFreq: freq))
+    }
+
+    func setSpatialAudio(_ mode: SpatialAudioMode) {
+        spatialAudio = mode
+        send(Messages.setSpatialAudio(mode))
     }
 
     func setInEar(_ on: Bool) { inEarDetection = on; send(Messages.setInEar(on)) }
@@ -384,6 +418,11 @@ final class EarbudsController: ObservableObject {
             if let v = Messages.parseEQ(p) { eqWire = v }
         case Command.firmwareResponse:
             firmware = Messages.parseFirmware(p)
+        case Command.customEQResponse:
+            if let parsed = Messages.parseCustomEQ(p) {
+                customEQ = parsed
+                savePersistedCustomEQ()
+            }
         case Command.inEarResponse:
             if let v = Messages.parseInEar(p) { inEarDetection = v }
         case Command.latencyResponse:
@@ -391,6 +430,10 @@ final class EarbudsController: ObservableObject {
         case Command.bassResponse:
             if let v = Messages.parseBass(p, threeStage: model?.threeStageBass ?? false) {
                 bassEnabled = v.enabled; bassLevel = v.level
+            }
+        case let c where Command.spatialAudioResponses.contains(c):
+            if let mode = Messages.parseSpatialAudio(p) {
+                spatialAudio = mode
             }
         default:
             break

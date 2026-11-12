@@ -25,7 +25,9 @@ Built with Nothing's signature dark aesthetic, featuring live battery rings, ful
 - **Side-by-Side Equalizer with Live Spectrum**:
   - Precision 16-band animated spectrum visualizer with real-time harmonic waveforms reflecting active sound profiles.
   - Classic presets (*Balanced*, *More Voice*, *More Treble*, *More Bass*) and Listening Mode presets (*Dirac OPTEO*, *Pop*, *Rock*, *Classical*, *Electronic*, *Enhance Vocals*).
-  - Dedicated **Custom** preset option to trigger and recall custom earbud tuning profiles.
+  - Dedicated **Interactive Custom EQ Slider Modal**: fine-tune dB frequency offsets for Bass (140 Hz), Mid (980 Hz), and Treble with real-time waveform updates and persistent on-device memory.
+- **Spatial Audio Control**:
+  - Full support for model-specific spatial audio modes: **Off**, **Fixed**, **Head-Tracked**, **Concert**, and **Theatre**.
 - **Bass Enhance / Ultra Bass**:
   - Multi-level intensity slider with segmented LED-style visual feedback.
 - **Auto-Connect**:
@@ -65,8 +67,8 @@ Compatible with most Nothing and CMF audio devices communicating over Bluetooth 
 ## 📥 Downloads
 
 Grab the latest pre-built release from the **[Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases)** page:
-- **`Ear-Desk-macOS-v1.3.0.dmg`**: Drag-and-drop disk image installer.
-- **`Ear-Desk-macOS-v1.3.0.zip`**: Standard application archive containing `Ear-Desk.app`.
+- **`Ear-Desk-macOS-v1.4.0.dmg`**: Drag-and-drop disk image installer.
+- **`Ear-Desk-macOS-v1.4.0.zip`**: Standard application archive containing `Ear-Desk.app`.
 
 ---
 

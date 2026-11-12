@@ -10,8 +10,48 @@ public struct ANCCapabilities: OptionSet {
     public static let transparency = ANCCapabilities(rawValue: 0x10)
 }
 
+public enum SpatialAudioMode: String, CaseIterable, Identifiable {
+    case off
+    case fixed
+    case headTracked
+    case concert
+    case theatre
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .off: return "Off"
+        case .fixed: return "Fixed"
+        case .headTracked: return "Head Tracked"
+        case .concert: return "Concert"
+        case .theatre: return "Theatre"
+        }
+    }
+
+    public var wirePayload: (mode: UInt8, head: UInt8) {
+        switch self {
+        case .off: return (0x00, 0x00)
+        case .fixed: return (0x01, 0x00)
+        case .headTracked: return (0x01, 0x01)
+        case .concert: return (0x02, 0x00)
+        case .theatre: return (0x03, 0x00)
+        }
+    }
+
+    public static func from(modeByte: UInt8, headByte: UInt8) -> SpatialAudioMode {
+        if modeByte == 0 { return .off }
+        if modeByte == 1 {
+            return headByte == 1 ? .headTracked : .fixed
+        }
+        if modeByte == 2 { return .concert }
+        if modeByte == 3 { return .theatre }
+        return .off
+    }
+}
+
 public enum EQStyle {
-    /// Classic EQ command (0xF010): Balanced / More Voice / More Treble / More Bass.
+    /// Classic EQ command (0xF010): Balanced / More Voice / More Treble / More Bass / Custom.
     case classic
     /// "Listening mode" command (0xF01D) with genre presets (CMF Buds line, Pro 2, headphones).
     case listeningMode(presets: [(name: String, wire: UInt8)])
@@ -26,8 +66,32 @@ public struct DeviceModel {
     public let threeStageBass: Bool
     public let supportsInEar: Bool
     public let ringStyle: RingStyle
+    public let customEQHighShelfFreq: Float
+    public let supportedSpatialModes: [SpatialAudioMode]
 
     public enum RingStyle { case single, perBud, headphone }
+
+    public init(base: String,
+                displayName: String,
+                ancLevel: Int,
+                eqStyle: EQStyle,
+                supportsBassEnhance: Bool,
+                threeStageBass: Bool,
+                supportsInEar: Bool,
+                ringStyle: RingStyle,
+                customEQHighShelfFreq: Float = 3500.0,
+                supportedSpatialModes: [SpatialAudioMode] = []) {
+        self.base = base
+        self.displayName = displayName
+        self.ancLevel = ancLevel
+        self.eqStyle = eqStyle
+        self.supportsBassEnhance = supportsBassEnhance
+        self.threeStageBass = threeStageBass
+        self.supportsInEar = supportsInEar
+        self.ringStyle = ringStyle
+        self.customEQHighShelfFreq = customEQHighShelfFreq
+        self.supportedSpatialModes = supportedSpatialModes
+    }
 
     public var anc: ANCCapabilities? { ancLevel < 0 ? nil : ANCCapabilities(rawValue: ancLevel) }
     public var hasANC: Bool { ancLevel >= 0 }
@@ -61,6 +125,13 @@ public enum DeviceCatalog {
         [("Pop", 3), ("Rock", 1), ("Electronic", 2), ("Classical", 5), ("Custom", 6), ("Enhance Vocals", 4)]
     static let diracBases: Set<String> = ["B172", "B195"]
 
+    static let highShelf6900Bases: Set<String> = ["B163", "B179", "B184", "B197", "B190"]
+    static let highShelf3400Bases: Set<String> = ["B155", "B162", "B168", "B171", "B174", "B185", "B189", "B192"]
+    static let concertTheatreSpatialBases: Set<String> = ["B175", "B186"]
+    static let headTrackedSpatialBases: Set<String> = ["B170", "B173"]
+    static let fixedSpatialBases: Set<String> = ["B179", "B181", "B184", "B185", "B189", "B190", "B197", "B172", "B195"]
+
+
     // (base, marketing name, ancLevel from ear_config_file.json)
     static let rows: [(String, String, Int)] = [
         ("B181", "Nothing ear (1)", 53), ("B157", "Ear (Stick)", 33), ("B155", "Nothing Ear (2)", 63),
@@ -81,12 +152,30 @@ public enum DeviceCatalog {
         } else {
             style = .classic
         }
+        let highShelfFreq: Float = {
+            if highShelf6900Bases.contains(base) { return 6900.0 }
+            if highShelf3400Bases.contains(base) { return 3400.0 }
+            return 3500.0
+        }()
+        let spatialModes: [SpatialAudioMode] = {
+            if concertTheatreSpatialBases.contains(base) {
+                return [.off, .concert, .theatre]
+            } else if headTrackedSpatialBases.contains(base) {
+                return [.off, .fixed, .headTracked]
+            } else if fixedSpatialBases.contains(base) {
+                return [.off, .fixed]
+            }
+            return []
+        }()
         return DeviceModel(
             base: base, displayName: name, ancLevel: anc, eqStyle: style,
             supportsBassEnhance: bassBases.contains(base),
             threeStageBass: threeStageBassBases.contains(base),
             supportsInEar: !noInEarBases.contains(base),
-            ringStyle: base == "B181" ? .single : (headphoneRingBases.contains(base) ? .headphone : .perBud))
+            ringStyle: base == "B181" ? .single : (headphoneRingBases.contains(base) ? .headphone : .perBud),
+            customEQHighShelfFreq: highShelfFreq,
+            supportedSpatialModes: spatialModes
+        )
     }
 
     /// Best-effort match from the Bluetooth device name (macOS does not expose Fast Pair model IDs).

@@ -41,6 +41,18 @@ public struct BatteryInfo: Equatable {
     }
 }
 
+public struct CustomEQ: Equatable {
+    public var bass: Int    // -6 ... +6
+    public var mid: Int     // -6 ... +6
+    public var treble: Int  // -6 ... +6
+
+    public init(bass: Int = 0, mid: Int = 0, treble: Int = 0) {
+        self.bass = max(-6, min(6, bass))
+        self.mid = max(-6, min(6, mid))
+        self.treble = max(-6, min(6, treble))
+    }
+}
+
 public enum Messages {
     // MARK: Requests
     public static func setANC(_ mode: ANCMode) -> (UInt16, [UInt8]) {
@@ -58,6 +70,11 @@ public enum Messages {
         return (Command.setBass, [enabled ? 1 : 0, UInt8(truncatingIfNeeded: wireLevel)])
     }
 
+    public static func setSpatialAudio(_ mode: SpatialAudioMode) -> (UInt16, [UInt8]) {
+        let payload = mode.wirePayload
+        return (Command.setSpatialAudio, [payload.mode, payload.head])
+    }
+
     public static func ring(on: Bool, left: Bool, style: DeviceModel.RingStyle) -> (UInt16, [UInt8]) {
         switch style {
         case .single: return (Command.ring, [on ? 1 : 0])
@@ -69,6 +86,54 @@ public enum Messages {
     public static func setTime(_ date: Date = Date()) -> (UInt16, [UInt8]) {
         let s = UInt32(truncatingIfNeeded: Int(date.timeIntervalSince1970))
         return (Command.setTime, [UInt8(s >> 24 & 0xFF), UInt8(s >> 16 & 0xFF), UInt8(s >> 8 & 0xFF), UInt8(s & 0xFF)])
+    }
+
+    /// 53-byte payload for custom 3-band EQ (`0xF041`), exactly matching ear-web & nothingctl.
+    /// Floats are IEEE-754 float32 little-endian.
+    public static func setCustomEQ(bass: Int, mid: Int, treble: Int, highShelfFreq: Float = 3500.0) -> (UInt16, [UInt8]) {
+        let b = Float(max(-6, min(6, bass)))
+        let m = Float(max(-6, min(6, mid)))
+        let t = Float(max(-6, min(6, treble)))
+
+        let maxGain = max(0.0, max(b, max(m, t)))
+        let totalGain: Float = -maxGain
+
+        var payload = [UInt8]()
+        payload.reserveCapacity(53)
+
+        // 0: band count
+        payload.append(0x03)
+
+        func appendFloat(_ val: Float) {
+            var v = val
+            withUnsafeBytes(of: &v) { payload.append(contentsOf: $0) }
+        }
+
+        // 1..4: total gain
+        appendFloat(totalGain)
+
+        // Band 1: Peak (Mid, 980 Hz, Q 0.7)
+        payload.append(0x01)
+        appendFloat(m)
+        appendFloat(980.0)
+        appendFloat(0.7)
+
+        // Band 2: High shelf (Treble, highShelfFreq, Q 1.0)
+        payload.append(0x02)
+        appendFloat(t)
+        appendFloat(highShelfFreq)
+        appendFloat(1.0)
+
+        // Band 3: Low shelf (Bass, 140 Hz, Q 0.8)
+        payload.append(0x00)
+        appendFloat(b)
+        appendFloat(140.0)
+        appendFloat(0.8)
+
+        // 44..52: 9 trailing zeros (3 per band)
+        payload.append(contentsOf: [UInt8](repeating: 0, count: 9))
+
+        return (Command.setCustomEQ, payload)
     }
 
     // MARK: Responses (offsets match the web client: payload starts at raw[8])
@@ -114,5 +179,26 @@ public enum Messages {
         let wireLevel = Int(p.raw[9])
         let level = threeStage ? ([0, 5, 10].firstIndex(of: wireLevel) ?? 0) : wireLevel / 2
         return (p.raw[8] == 1, level)
+    }
+
+    /// Parses 0x4044 Custom EQ response. Band gains are float32 LE at bytes 14..17, 27..30, 40..43.
+    public static func parseCustomEQ(_ p: Packet) -> CustomEQ? {
+        let r = p.raw
+        guard r.count >= 44 else { return nil }
+        func readFloat(at offset: Int) -> Float {
+            let slice = Array(r[offset..<offset+4])
+            return slice.withUnsafeBytes { $0.loadUnaligned(as: Float.self) }
+        }
+        let m = Int(round(readFloat(at: 14)))
+        let t = Int(round(readFloat(at: 27)))
+        let b = Int(round(readFloat(at: 40)))
+        return CustomEQ(bass: b, mid: m, treble: t)
+    }
+    /// Parses 0x404F / 0xE029 Spatial Audio reply. Byte 8 is mode, byte 9 is head tracking.
+    public static func parseSpatialAudio(_ p: Packet) -> SpatialAudioMode? {
+        guard p.raw.count > 8 else { return nil }
+        let modeByte = p.raw[8]
+        let headByte = p.raw.count > 9 ? p.raw[9] : 0
+        return SpatialAudioMode.from(modeByte: modeByte, headByte: headByte)
     }
 }

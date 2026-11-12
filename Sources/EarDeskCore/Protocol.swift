@@ -13,7 +13,9 @@ public enum Command {
     public static let getEQ: UInt16 = 0xC01F
     public static let getLatency: UInt16 = 0xC041
     public static let getFirmware: UInt16 = 0xC042
+    public static let getCustomEQ: UInt16 = 0xC044
     public static let getBass: UInt16 = 0xC04E
+    public static let getSpatialAudio: UInt16 = 0xC04F
     public static let getListeningMode: UInt16 = 0xC050
 
     public static let ring: UInt16 = 0xF002
@@ -23,7 +25,9 @@ public enum Command {
     public static let setEQ: UInt16 = 0xF010
     public static let setListeningMode: UInt16 = 0xF01D
     public static let setLatency: UInt16 = 0xF040
+    public static let setCustomEQ: UInt16 = 0xF041
     public static let setBass: UInt16 = 0xF051
+    public static let setSpatialAudio: UInt16 = 0xF052
 
     // Responses / notifications (buds -> host)
     public static let batteryResponses: Set<UInt16> = [0xE001, 0x4007]
@@ -32,7 +36,9 @@ public enum Command {
     public static let firmwareResponse: UInt16 = 0x4042
     public static let inEarResponse: UInt16 = 0x400E
     public static let latencyResponse: UInt16 = 0x4041
+    public static let customEQResponse: UInt16 = 0x4044
     public static let bassResponse: UInt16 = 0x404E
+    public static let spatialAudioResponses: Set<UInt16> = [0x404F, 0xE029, 0x6029]
 }
 
 public enum CRC16 {
@@ -123,9 +129,10 @@ public struct PacketParser {
     }
 
     private func make(_ raw: [UInt8], payloadLen: Int) -> Packet {
-        Packet(command: UInt16(raw[3]) | (UInt16(raw[4]) << 8),
-               operationID: raw[7],
-               payload: Array(raw[8..<(8 + payloadLen)]),
-               raw: raw)
+        let cmd = UInt16(raw[3]) | (UInt16(raw[4]) << 8)
+        let op = raw[7]
+        let end = min(raw.count, 8 + payloadLen)
+        let payload = (end > 8) ? Array(raw[8..<end]) : []
+        return Packet(command: cmd, operationID: op, payload: payload, raw: raw)
     }
 }

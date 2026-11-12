@@ -113,11 +113,11 @@ struct SettingsView: View {
     @EnvironmentObject var ctl: EarbudsController
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.3.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.4.0"
     }
 
     private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "5"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "6"
     }
 
     var body: some View {
