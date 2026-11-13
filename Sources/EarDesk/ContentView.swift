@@ -1094,7 +1094,7 @@ struct ControlsView: View {
             HStack(spacing: 8) {
                 // Settings button
                 Button {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    openSettingsWindow()
                 } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 11, weight: .semibold))

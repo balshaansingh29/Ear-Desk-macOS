@@ -2,6 +2,28 @@ import SwiftUI
 import AppKit
 import EarDeskCore
 
+@MainActor
+func openSettingsWindow() {
+    NSApp.activate(ignoringOtherApps: true)
+    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        for window in NSApp.windows {
+            let title = window.title.lowercased()
+            let className = window.className
+            if title.contains("settings") || title.contains("preferences") || className.contains("Preferences") {
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
+                window.setIsVisible(true)
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+        }
+    }
+}
+
 @main
 struct EarDeskApp: App {
     @StateObject private var controller = EarbudsController()
@@ -32,7 +54,7 @@ struct EarDeskApp: App {
                     Task {
                         await updater.checkForUpdates(manual: true)
                     }
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    openSettingsWindow()
                 }
             }
         }
@@ -351,7 +373,7 @@ struct MenuBarPopoverView: View {
                     .help("Open Full App Window")
 
                     Button {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                        openSettingsWindow()
                     } label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: 10, weight: .semibold))
