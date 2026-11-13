@@ -28,9 +28,8 @@ Communicating directly over **Bluetooth Classic (RFCOMM)** with zero electron bl
 
 ## ⚡ Key Features
 
-### 🔋 Dynamic Menu Bar Battery Gauge & Live Sound Equalizer
+### 🔋 Dynamic Menu Bar Battery Gauge
 - 🟢 **Live Circular Battery Ring**: Custom-drawn circular battery ring directly around your device's glyph in the menu bar.
-- 🎵 **Live Animated Sound Equalizer**: Subtle 3-bar animated sound glyph in the menu bar that dynamically pulses when audio is actively streaming.
 - ⏱️ **Energy-Throttled Refresh**: Intelligent 5-minute background polling keeps battery stats accurate with near-zero power draw.
 - 🖱️ **Instant Quick-Action Dropdown**: Toggle ANC modes, inspect earbud/case charge, or disconnect with a single click.
 
@@ -103,12 +102,12 @@ brew install --cask https://raw.githubusercontent.com/balshaansingh29/Ear-Desk-m
 ### Option 2: Drag-and-Drop DMG (Recommended) 💿
 Download the latest pre-compiled installer from [GitHub Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/latest):
 
-1. Download **[`Ear-Desk-macOS-v1.8.0.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.8.0/Ear-Desk-macOS-v1.8.0.dmg)**.
+1. Download **[`Ear-Desk-macOS-v1.8.1.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.8.1/Ear-Desk-macOS-v1.8.1.dmg)**.
 2. Open the disk image and drag **`Ear-Desk.app`** into **`Applications`**.
 3. Launch **Ear-Desk** and approve the Bluetooth permission request when prompted.
 
 ### Option 3: Portable ZIP Archive 📁
-- Download **[`Ear-Desk-macOS-v1.8.0.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.8.0/Ear-Desk-macOS-v1.8.0.zip)**, unzip, and launch directly.
+- Download **[`Ear-Desk-macOS-v1.8.1.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.8.1/Ear-Desk-macOS-v1.8.1.zip)**, unzip, and launch directly.
 
 ---
 

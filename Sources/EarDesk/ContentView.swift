@@ -174,7 +174,7 @@ struct ContentView: View {
     @State private var showWhatsNewModal: Bool = false
 
     private var currentAppVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.8.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.8.1"
     }
 
     var body: some View {

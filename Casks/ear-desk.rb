@@ -1,6 +1,6 @@
 cask "ear-desk" do
-  version "1.8.0"
-  sha256 "7e1b8bc5e35ca22252e0661e8361eb82c5ab1c1b31cef04c7855279bb390ffde"
+  version "1.8.1"
+  sha256 "f55807cad12d864eb5159a7f8a29ec94f7e36fd3a9ecb4630f859b1ee4c8899b"
 
   url "https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v#{version}/Ear-Desk-macOS-v#{version}.dmg"
   name "Ear-Desk"

@@ -53,7 +53,11 @@ final class EarbudsController: ObservableObject {
     @Published var manualModelBase: String = "auto"
 
     // Link
-    @Published var link: LinkState = .idle
+    @Published var link: LinkState = .idle {
+        didSet {
+            syncStateToWidget()
+        }
+    }
     @Published private(set) var model: DeviceModel?
     @Published private(set) var deviceName: String = ""
 
@@ -94,12 +98,7 @@ final class EarbudsController: ObservableObject {
         }
     }
 
-    // Menu Bar Animated Glyph Sound Equalizer Display
-    @Published var showMenuBarSoundEqualizer: Bool = UserDefaults.standard.object(forKey: "showMenuBarSoundEqualizer") != nil ? UserDefaults.standard.bool(forKey: "showMenuBarSoundEqualizer") : true {
-        didSet {
-            UserDefaults.standard.set(showMenuBarSoundEqualizer, forKey: "showMenuBarSoundEqualizer")
-        }
-    }
+
 
     @Published var notifyConnection: Bool = UserDefaults.standard.object(forKey: "notifyConnectionEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyConnectionEnabled") : true {
         didSet {
@@ -181,9 +180,7 @@ final class EarbudsController: ObservableObject {
         showMenuBarBatteryPercentage = enabled
     }
 
-    func setMenuBarSoundEqualizer(_ enabled: Bool) {
-        showMenuBarSoundEqualizer = enabled
-    }
+
 
     func setMenuBarOnly(_ enabled: Bool) {
         menuBarOnly = enabled
@@ -467,6 +464,32 @@ final class EarbudsController: ObservableObject {
         }
     }
 
+
+    // MARK: - Widget State Persistence
+    func syncStateToWidget() {
+        let isConn = (link == .connected)
+        let name = deviceName.isEmpty ? (model?.displayName ?? "Nothing Ear") : deviceName
+        let mBase = model?.base ?? "B155"
+        let ancStr: String? = isConn ? (anc?.title) : nil
+
+        let shared = SharedDeviceBatteryState(
+            isConnected: isConn,
+            deviceName: name,
+            modelBase: mBase,
+            leftLevel: battery.left?.level,
+            leftCharging: battery.left?.charging ?? false,
+            rightLevel: battery.right?.level,
+            rightCharging: battery.right?.charging ?? false,
+            caseLevel: battery.caseCell?.level,
+            caseCharging: battery.caseCell?.charging ?? false,
+            stereoLevel: battery.stereo?.level,
+            stereoCharging: battery.stereo?.charging ?? false,
+            ancMode: ancStr,
+            lastUpdated: Date()
+        )
+        shared.save()
+    }
+
     // MARK: Send
     private func send(_ command: UInt16, _ payload: [UInt8] = []) {
         transport.write(frames.build(command, payload: payload))
@@ -579,6 +602,7 @@ final class EarbudsController: ObservableObject {
             battery = Messages.parseBattery(p)
             checkMenuBarBatteryUpdate()
             checkLowBatteryNotifications(battery)
+            syncStateToWidget()
         case let c where Command.ancResponses.contains(c):
             if let m = Messages.parseANC(p) { anc = m }
         case let c where Command.eqResponses.contains(c):

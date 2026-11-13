@@ -31,6 +31,50 @@ if [ -d Resources/AppIcons ]; then
 fi
 
 # Ad-hoc sign so macOS will grant the Bluetooth permission prompt. Use your Developer ID to distribute.
+# Build macOS WidgetKit extension (.appex)
+WIDGET_EXT="$APP/Contents/PlugIns/EarDeskWidget.appex"
+mkdir -p "$WIDGET_EXT/Contents/MacOS" "$WIDGET_EXT/Contents/Resources"
+cat << EOF_PLIST > "$WIDGET_EXT/Contents/Info.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Ear-Desk Status</string>
+    <key>CFBundleExecutable</key>
+    <string>EarDeskWidget</string>
+    <key>CFBundleIdentifier</key>
+    <string>app.eardesk.mac.widget</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>EarDeskWidget</string>
+    <key>CFBundlePackageType</key>
+    <string>XPC!</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.8.1</string>
+    <key>CFBundleVersion</key>
+    <string>8</string>
+    <key>NSExtension</key>
+    <dict>
+        <key>NSExtensionPointIdentifier</key>
+        <string>com.apple.widgetkit-extension</string>
+    </dict>
+</dict>
+</plist>
+EOF_PLIST
+
+swiftc -target arm64-apple-macos14.0 -O \
+    -Xlinker -rpath -Xlinker @executable_path/../../../../Frameworks \
+    -Xlinker -rpath -Xlinker @loader_path/../../../../Frameworks \
+    Sources/EarDeskCore/SharedDeviceBatteryState.swift \
+    Sources/EarDeskWidget/EarDeskWidget.swift \
+    -o "$WIDGET_EXT/Contents/MacOS/EarDeskWidget"
+
+codesign --force --deep --sign - "$WIDGET_EXT"
+
 codesign --force --deep --sign - "$APP"
 echo "Built: $APP"
 file "$APP/Contents/MacOS/EarDesk"
@@ -41,7 +85,7 @@ if command -v python3 &>/dev/null; then
     python3 -c '
 import os, subprocess, time, glob
 
-dmg_path = "build/Ear-Desk-macOS-v1.8.0.dmg"
+dmg_path = "build/Ear-Desk-macOS-v1.8.1.dmg"
 temp_dmg = "build/temp_installer.dmg"
 vol_name = "Ear-Desk"
 src_app = "build/Ear-Desk.app"
@@ -142,7 +186,7 @@ print("DMG build completed successfully with Light icon inside and out!")
 '
 fi
 # Also package release ZIP archive for portable use
-zip_path="build/Ear-Desk-macOS-v1.8.0.zip"
+zip_path="build/Ear-Desk-macOS-v1.8.1.zip"
 rm -f "$zip_path"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$zip_path"
 echo "ZIP archive created at: $zip_path"

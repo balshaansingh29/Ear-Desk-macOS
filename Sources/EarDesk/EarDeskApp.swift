@@ -74,9 +74,6 @@ struct EarDeskApp: App {
                     Text(pct)
                         .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 }
-                if controller.showMenuBarSoundEqualizer && controller.link == .connected {
-                    MenuBarLiveEqualizerView()
-                }
             }
         }
         .menuBarExtraStyle(.window)
@@ -84,28 +81,7 @@ struct EarDeskApp: App {
 }
 
 
-struct MenuBarLiveEqualizerView: View {
-    @ObservedObject var monitor = AudioActivityMonitor.shared
-    @State private var phase: Double = 0
 
-    var body: some View {
-        if monitor.isAudioPlaying {
-            TimelineView(.animation(minimumInterval: 0.15)) { timeline in
-                let now = timeline.date.timeIntervalSinceReferenceDate
-                HStack(alignment: .bottom, spacing: 2) {
-                    RoundedRectangle(cornerRadius: 1)
-                        .frame(width: 2.2, height: CGFloat(4 + Int((sin(now * 8) + 1.0) * 3)))
-                    RoundedRectangle(cornerRadius: 1)
-                        .frame(width: 2.2, height: CGFloat(5 + Int((cos(now * 11) + 1.0) * 3.5)))
-                    RoundedRectangle(cornerRadius: 1)
-                        .frame(width: 2.2, height: CGFloat(3 + Int((sin(now * 9.5 + 1.5) + 1.0) * 3)))
-                }
-                .foregroundStyle(.primary)
-                .frame(height: 12)
-            }
-        }
-    }
-}
 
 struct MenuContent: View {
     @EnvironmentObject var ctl: EarbudsController
@@ -753,14 +729,7 @@ struct SettingsView: View {
                         )
                     )
 
-                    settingToggle(
-                        title: "Show Live Equalizer in Menu Bar",
-                        subtitle: "Subtle animated 3-bar sound glyph that pulses when audio is streaming",
-                        isOn: Binding(
-                            get: { ctl.showMenuBarSoundEqualizer },
-                            set: { ctl.setMenuBarSoundEqualizer($0) }
-                        )
-                    )
+
 
                     VStack(alignment: .leading, spacing: 10) {
                         settingToggle(
