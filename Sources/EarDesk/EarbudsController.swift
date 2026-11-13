@@ -94,6 +94,13 @@ final class EarbudsController: ObservableObject {
         }
     }
 
+    // Menu Bar Animated Glyph Sound Equalizer Display
+    @Published var showMenuBarSoundEqualizer: Bool = UserDefaults.standard.object(forKey: "showMenuBarSoundEqualizer") != nil ? UserDefaults.standard.bool(forKey: "showMenuBarSoundEqualizer") : true {
+        didSet {
+            UserDefaults.standard.set(showMenuBarSoundEqualizer, forKey: "showMenuBarSoundEqualizer")
+        }
+    }
+
     @Published var notifyConnection: Bool = UserDefaults.standard.object(forKey: "notifyConnectionEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyConnectionEnabled") : true {
         didSet {
             UserDefaults.standard.set(notifyConnection, forKey: "notifyConnectionEnabled")
@@ -172,6 +179,10 @@ final class EarbudsController: ObservableObject {
 
     func setMenuBarBatteryPercentage(_ enabled: Bool) {
         showMenuBarBatteryPercentage = enabled
+    }
+
+    func setMenuBarSoundEqualizer(_ enabled: Bool) {
+        showMenuBarSoundEqualizer = enabled
     }
 
     func setMenuBarOnly(_ enabled: Bool) {
