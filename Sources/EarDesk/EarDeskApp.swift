@@ -62,6 +62,8 @@ struct MenuContent: View {
     @EnvironmentObject var ctl: EarbudsController
     @EnvironmentObject var updater: AppUpdater
     @ObservedObject var iconManager = AppIconManager.shared
+    @ObservedObject var hotkeyManager = GlobalHotkeyManager.shared
+    @ObservedObject var typoManager = TypographyManager.shared
 
     private func bringAppToFront() {
         // If dock icon is hidden, keep accessory or switch to regular temporarily to activate window
@@ -299,6 +301,7 @@ struct MenuBarPopoverView: View {
     @EnvironmentObject var ctl: EarbudsController
     @EnvironmentObject var updater: AppUpdater
     @ObservedObject var iconManager = AppIconManager.shared
+    @ObservedObject var hotkeyManager = GlobalHotkeyManager.shared
 
     private func bringAppToFront() {
         NSApp.activate(ignoringOtherApps: true)
@@ -462,6 +465,36 @@ struct MenuBarPopoverView: View {
                         .menuStyle(.borderlessButton)
                     }
 
+                    // Equalizer Quick Preset Menu
+                    let presets: [(name: String, wire: UInt8)] = {
+                        switch ctl.model?.eqStyle {
+                        case .listeningMode(let p)?: return p
+                        default: return [("Balanced", 0), ("More Voice", 1), ("More Treble", 2), ("More Bass", 3), ("Custom", 6)]
+                        }
+                    }()
+                    let currentEQName = presets.first(where: { $0.wire == ctl.eqWire })?.name ?? "EQ"
+
+                    Menu {
+                        ForEach(presets, id: \.wire) { p in
+                            Button(p.name) {
+                                ctl.setEQ(wire: p.wire)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "slider.vertical.3")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(currentEQName.uppercased())
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        }
+                        .foregroundStyle(ctl.eqWire != 0 ? Color.white : NothingTheme.textSecondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(ctl.eqWire != 0 ? Color.white.opacity(0.18) : Color.white.opacity(0.06), in: Capsule())
+                    }
+                    .menuStyle(.borderlessButton)
+
+
                     Spacer()
 
                     Button {
@@ -572,6 +605,8 @@ struct SettingsView: View {
     @EnvironmentObject var ctl: EarbudsController
     @EnvironmentObject var updater: AppUpdater
     @ObservedObject var iconManager = AppIconManager.shared
+    @ObservedObject var hotkeyManager = GlobalHotkeyManager.shared
+    @ObservedObject var typoManager = TypographyManager.shared
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.7.0"
@@ -582,247 +617,367 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Header
-            HStack(spacing: 12) {
-                Image(nsImage: NSApplication.shared.applicationIconImage)
-                    .resizable()
-                    .frame(width: 48, height: 48)
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 20) {
+                // Header
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApplication.shared.applicationIconImage)
+                        .resizable()
+                        .frame(width: 46, height: 46)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Ear-Desk")
-                        .font(.system(size: 16, weight: .bold))
-                    Text("Version \(appVersion) (\(buildNumber))")
-                        .font(.system(size: 11))
-                        .foregroundStyle(NothingTheme.textSecondary)
-                }
-                Spacer()
-            }
-            .padding(.bottom, 4)
-
-            Divider()
-
-            // Settings Options
-            VStack(spacing: 12) {
-                settingToggle(
-                    title: "Launch at Login",
-                    subtitle: "Automatically start Ear-Desk when you log in to your Mac",
-                    isOn: Binding(
-                        get: { ctl.launchAtLogin },
-                        set: { ctl.setLaunchAtLogin($0) }
-                    )
-                )
-
-                settingToggle(
-                    title: "Auto-Connect to Paired Earbuds",
-                    subtitle: "Automatically connect when earbuds become reachable via Bluetooth",
-                    isOn: Binding(
-                        get: { ctl.autoConnect },
-                        set: { ctl.setAutoConnect($0) }
-                    )
-                )
-
-                settingToggle(
-                    title: "Low Battery Notifications",
-                    subtitle: "Show desktop alert when earbud or case battery falls below 15%",
-                    isOn: Binding(
-                        get: { ctl.notifyLowBattery },
-                        set: { ctl.setNotifyLowBattery($0) }
-                    )
-                )
-
-                settingToggle(
-                    title: "Menu Bar Only (Hide Dock Icon)",
-                    subtitle: "Hide the app from the macOS Dock and Cmd+Tab switcher; run exclusively from the menu bar",
-                    isOn: Binding(
-                        get: { ctl.menuBarOnly },
-                        set: { ctl.setMenuBarOnly($0) }
-                    )
-                )
-
-                settingToggle(
-                    title: "Show Battery Percentage in Menu Bar",
-                    subtitle: "Display exact numerical battery percentage alongside the menu bar icon",
-                    isOn: Binding(
-                        get: { ctl.showMenuBarBatteryPercentage },
-                        set: { ctl.setMenuBarBatteryPercentage($0) }
-                    )
-                )
-
-                // App Icon & Widget Style Selector (matches macOS System Settings -> Appearance)
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Icon & Widget Style")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.white)
-                            Text("Select an icon appearance or follow macOS System Settings")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textSecondary)
-                        }
-                        Spacer()
-                        Picker("", selection: $iconManager.selectedTheme) {
-                            ForEach(AppIconTheme.allCases) { theme in
-                                Text(theme.description).tag(theme)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 150)
-                    }
-
-                    // 4 Swatches matching macOS System Settings: Default, Dark, Clear, Tinted
-                    HStack(spacing: 10) {
-                        ForEach([AppIconTheme.light, AppIconTheme.dark, AppIconTheme.clear, AppIconTheme.tinted], id: \.self) { theme in
-                            let isDirectlySelected = iconManager.selectedTheme == theme
-                            let isAutoMatching = iconManager.selectedTheme == .automatic && iconManager.iconName(for: .automatic).contains(theme.rawValue)
-                            let isActive = isDirectlySelected || isAutoMatching
-
-                            Button(action: {
-                                iconManager.selectedTheme = theme
-                            }) {
-                                VStack(spacing: 6) {
-                                    let assetName = iconManager.iconName(for: theme)
-                                    if let img = iconManager.loadIconImage(named: assetName) {
-                                        Image(nsImage: img)
-                                            .resizable()
-                                            .aspectRatio(contentMode: .fit)
-                                            .frame(width: 40, height: 40)
-                                            .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
-                                    }
-                                    Text(theme.rawValue)
-                                        .font(.system(size: 10, weight: isActive ? .semibold : .regular))
-                                        .foregroundStyle(isActive ? .white : NothingTheme.textSecondary)
-                                }
-                                .padding(.vertical, 8)
-                                .padding(.horizontal, 4)
-                                .frame(maxWidth: .infinity)
-                                .background(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(isActive ? NothingTheme.red : Color.white.opacity(0.08), lineWidth: isActive ? 1.5 : 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-
-
-            }
-
-            Divider()
-
-            // Software Updates Section
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Software Updates")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.white)
-                        if let lastChecked = updater.lastChecked {
-                            Text("Last checked: \(lastChecked.formatted(date: .omitted, time: .shortened))")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textSecondary)
-                        } else {
-                            Text("Check GitHub releases for updates")
-                                .font(.system(size: 10))
-                                .foregroundStyle(NothingTheme.textSecondary)
-                        }
+                        Text("Ear-Desk")
+                            .font(.system(size: 16, weight: .bold))
+                        Text("Version \(appVersion) (\(buildNumber))")
+                            .font(.system(size: 11))
+                            .foregroundStyle(NothingTheme.textSecondary)
                     }
                     Spacer()
 
-                    switch updater.status {
-                    case .checking:
-                        ProgressView().controlSize(.small)
-                    case .downloading, .installing:
-                        ProgressView().controlSize(.small)
-                    default:
-                        Button("Check Now") {
-                            Task {
-                                await updater.checkForUpdates(manual: true)
-                            }
+                    Button {
+                        NotificationCenter.default.post(name: Notification.Name("ReopenWhatsNew"), object: nil)
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: "gift")
+                                .font(.system(size: 11))
+                            Text("WHAT'S NEW")
+                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                .tracking(1.0)
                         }
-                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(NothingTheme.red)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(NothingTheme.surface, in: Capsule())
+                        .overlay(Capsule().strokeBorder(NothingTheme.red.opacity(0.35), lineWidth: 1))
+                    }
+                    .buttonStyle(.plain)
+                    .help("View recent updates and new features")
+                }
+
+                // 1. General & Connection Section
+                settingsSection(title: "GENERAL & CONNECTION") {
+                    settingToggle(
+                        title: "Launch at Login",
+                        subtitle: "Automatically start Ear-Desk when you log in to your Mac",
+                        isOn: Binding(
+                            get: { ctl.launchAtLogin },
+                            set: { ctl.setLaunchAtLogin($0) }
+                        )
+                    )
+
+                    settingToggle(
+                        title: "Auto-Connect to Paired Earbuds",
+                        subtitle: "Automatically connect when earbuds become reachable via Bluetooth",
+                        isOn: Binding(
+                            get: { ctl.autoConnect },
+                            set: { ctl.setAutoConnect($0) }
+                        )
+                    )
+
+                    settingToggle(
+                        title: "Menu Bar Only (Hide Dock Icon)",
+                        subtitle: "Hide the app from the macOS Dock and Cmd+Tab switcher; run exclusively from the menu bar",
+                        isOn: Binding(
+                            get: { ctl.menuBarOnly },
+                            set: { ctl.setMenuBarOnly($0) }
+                        )
+                    )
+                }
+
+                // 2. Notifications & Alerts Section
+                settingsSection(title: "NOTIFICATIONS & ALERTS") {
+                    settingToggle(
+                        title: "Connection & Disconnection Alerts",
+                        subtitle: "Show desktop banner notification when earbuds pair or unpair",
+                        isOn: Binding(
+                            get: { ctl.notifyConnection },
+                            set: { ctl.setNotifyConnection($0) }
+                        )
+                    )
+
+                    settingToggle(
+                        title: "Show Battery Percentage in Menu Bar",
+                        subtitle: "Display exact numerical battery percentage alongside the menu bar icon",
+                        isOn: Binding(
+                            get: { ctl.showMenuBarBatteryPercentage },
+                            set: { ctl.setMenuBarBatteryPercentage($0) }
+                        )
+                    )
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        settingToggle(
+                            title: "Low Battery Notifications",
+                            subtitle: "Show desktop alert when earbud or case battery falls below threshold",
+                            isOn: Binding(
+                                get: { ctl.notifyLowBattery },
+                                set: { ctl.setNotifyLowBattery($0) }
+                            )
+                        )
+
+                        if ctl.notifyLowBattery {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Alert Threshold:")
+                                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(NothingTheme.textSecondary)
+                                    Spacer()
+                                    Text("\(ctl.lowBatteryThreshold)%")
+                                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                        .foregroundStyle(ctl.lowBatteryThreshold <= 15 ? NothingTheme.red : Color.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 3)
+                                        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 5))
+                                }
+
+                                HStack(spacing: 10) {
+                                    Text("5%")
+                                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(NothingTheme.textTertiary)
+
+                                    Slider(
+                                        value: Binding(
+                                            get: { Double(ctl.lowBatteryThreshold) },
+                                            set: { ctl.setLowBatteryThreshold(Int($0)) }
+                                        ),
+                                        in: 5...40,
+                                        step: 5
+                                    )
+                                    .tint(NothingTheme.red)
+
+                                    Text("40%")
+                                        .font(.system(size: 9.5, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(NothingTheme.textTertiary)
+                                }
+                            }
+                            .padding(.top, 4)
+                            .padding(.horizontal, 4)
+                        }
                     }
                 }
 
-                switch updater.status {
-                case .upToDate:
-                    HStack(spacing: 6) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(Color.green)
-                            .font(.system(size: 11))
-                        Text("Ear-Desk is up to date (v\(updater.currentVersion)).")
-                            .font(.system(size: 10))
-                            .foregroundStyle(NothingTheme.textSecondary)
-                    }
-                case .updateAvailable(let version, _, let downloadUrl):
-                    HStack(spacing: 8) {
-                        Circle()
-                            .fill(NothingTheme.red)
-                            .frame(width: 6, height: 6)
-                        Text("Version \(version) is available!")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Button("Update Now") {
-                            Task {
-                                await updater.downloadAndInstall(url: downloadUrl)
+                // 3. Global Shortcuts Section
+                settingsSection(title: "GLOBAL SHORTCUTS") {
+                    settingToggle(
+                        title: "Cycle ANC Modes (⌃⌥A)",
+                        subtitle: "Press Control + Option + A anywhere to cycle Noise Cancellation, Transparency & Off",
+                        isOn: Binding(
+                            get: { hotkeyManager.isANCShortcutEnabled },
+                            set: { hotkeyManager.isANCShortcutEnabled = $0 }
+                        )
+                    )
+
+                    settingToggle(
+                        title: "Toggle Low Latency (⌃⌥L)",
+                        subtitle: "Press Control + Option + L anywhere to toggle Low Latency Game Mode",
+                        isOn: Binding(
+                            get: { hotkeyManager.isGameModeShortcutEnabled },
+                            set: { hotkeyManager.isGameModeShortcutEnabled = $0 }
+                        )
+                    )
+                }
+
+                // 4. Appearance & Icon Section
+                settingsSection(title: "APPEARANCE & THEME") {
+                    settingToggle(
+                        title: "Nothing Dot Matrix Font (NDot)",
+                        subtitle: "Render titles, cards, and branding in Nothing OS authentic dot-matrix typography",
+                        isOn: Binding(
+                            get: { typoManager.useDotMatrix },
+                            set: { typoManager.useDotMatrix = $0 }
+                        )
+                    )
+
+                    Divider()
+                        .padding(.vertical, 2)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Icon & Widget Style")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.white)
+                                Text("Select an icon appearance or follow macOS System Settings")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(NothingTheme.textSecondary)
+                            }
+                            Spacer()
+                            Picker("", selection: $iconManager.selectedTheme) {
+                                ForEach(AppIconTheme.allCases) { theme in
+                                    Text(theme.description).tag(theme)
+                                }
+                            }
+                            .labelsHidden()
+                            .frame(width: 140)
+                        }
+
+                        // 4 Swatches matching macOS System Settings: Default, Dark, Clear, Tinted
+                        HStack(spacing: 8) {
+                            ForEach([AppIconTheme.light, AppIconTheme.dark, AppIconTheme.clear, AppIconTheme.tinted], id: \.self) { theme in
+                                let isDirectlySelected = iconManager.selectedTheme == theme
+                                let isAutoMatching = iconManager.selectedTheme == .automatic && iconManager.iconName(for: .automatic).contains(theme.rawValue)
+                                let isActive = isDirectlySelected || isAutoMatching
+
+                                Button(action: {
+                                    iconManager.selectedTheme = theme
+                                }) {
+                                    VStack(spacing: 6) {
+                                        let assetName = iconManager.iconName(for: theme)
+                                        if let img = iconManager.loadIconImage(named: assetName) {
+                                            Image(nsImage: img)
+                                                .resizable()
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 36, height: 36)
+                                                .shadow(color: Color.black.opacity(0.2), radius: 3, x: 0, y: 1)
+                                        }
+                                        Text(theme.rawValue)
+                                            .font(.system(size: 9.5, weight: isActive ? .semibold : .regular))
+                                            .foregroundStyle(isActive ? .white : NothingTheme.textSecondary)
+                                    }
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 4)
+                                    .frame(maxWidth: .infinity)
+                                    .background(isActive ? Color.white.opacity(0.10) : Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(isActive ? NothingTheme.red : Color.white.opacity(0.08), lineWidth: isActive ? 1.5 : 1)
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
-                        .buttonStyle(.borderedProminent)
-                        .tint(NothingTheme.red)
-                        .controlSize(.small)
                     }
-                    .padding(10)
-                    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                }
 
-                case .downloading:
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Downloading update from GitHub…")
-                            .font(.system(size: 10))
-                            .foregroundStyle(NothingTheme.textSecondary)
+                // 5. Software Updates Section
+                settingsSection(title: "SOFTWARE UPDATES") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Check for Updates")
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.white)
+                                if let lastChecked = updater.lastChecked {
+                                    Text("Last checked: \(lastChecked.formatted(date: .omitted, time: .shortened))")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(NothingTheme.textSecondary)
+                                } else {
+                                    Text("Check GitHub releases for updates")
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(NothingTheme.textSecondary)
+                                }
+                            }
+                            Spacer()
+
+                            switch updater.status {
+                            case .checking, .downloading, .installing:
+                                ProgressView().controlSize(.small)
+                            default:
+                                Button("Check Now") {
+                                    Task {
+                                        await updater.checkForUpdates(manual: true)
+                                    }
+                                }
+                                .font(.system(size: 11, weight: .medium))
+                            }
+                        }
+
+                        switch updater.status {
+                        case .upToDate:
+                            HStack(spacing: 6) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Color.green)
+                                    .font(.system(size: 11))
+                                Text("Ear-Desk is up to date (v\(updater.currentVersion)).")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(NothingTheme.textSecondary)
+                            }
+                        case .updateAvailable(let version, _, let downloadUrl):
+                            HStack(spacing: 8) {
+                                Circle()
+                                    .fill(NothingTheme.red)
+                                    .frame(width: 6, height: 6)
+                                Text("Version \(version) is available!")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                Spacer()
+                                Button("Update Now") {
+                                    Task {
+                                        await updater.downloadAndInstall(url: downloadUrl)
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(NothingTheme.red)
+                                .controlSize(.small)
+                            }
+                            .padding(10)
+                            .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+
+                        case .downloading:
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Downloading update from GitHub…")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(NothingTheme.textSecondary)
+                            }
+                        case .installing:
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Installing and relaunching…")
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(NothingTheme.textSecondary)
+                            }
+                        case .readyToRestart:
+                            Text("Restarting Ear-Desk…")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color.green)
+                        case .failed(let err):
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundStyle(NothingTheme.red)
+                                    .font(.system(size: 11))
+                                Text(err)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(NothingTheme.red.opacity(0.9))
+                            }
+                        default:
+                            EmptyView()
+                        }
                     }
-                case .installing:
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Installing and relaunching…")
-                            .font(.system(size: 10))
-                            .foregroundStyle(NothingTheme.textSecondary)
-                    }
-                case .readyToRestart:
-                    Text("Restarting Ear-Desk…")
+                }
+
+                // Footer
+                HStack {
+                    Text("Designed for Nothing & CMF by Nothing Audio")
                         .font(.system(size: 10))
-                        .foregroundStyle(Color.green)
-                case .failed(let err):
-                    HStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(NothingTheme.red)
-                            .font(.system(size: 11))
-                        Text(err)
-                            .font(.system(size: 10))
-                            .foregroundStyle(NothingTheme.red.opacity(0.9))
-                    }
-                default:
-                    EmptyView()
+                        .foregroundStyle(NothingTheme.textTertiary)
+                    Spacer()
                 }
+                .padding(.top, 4)
             }
-
-            Divider()
-
-            // Footer
-            HStack {
-                Text("Designed for Nothing & CMF by Nothing Audio")
-                    .font(.system(size: 10))
-                    .foregroundStyle(NothingTheme.textTertiary)
-                Spacer()
-            }
+            .padding(22)
         }
-        .padding(20)
-        .frame(width: 420)
+        .frame(width: 440, height: 560)
         .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .tracking(1.0)
+                .foregroundStyle(NothingTheme.textTertiary)
+
+            VStack(spacing: 12) {
+                content()
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+            )
+        }
     }
 
     private func settingToggle(title: String, subtitle: String, isOn: Binding<Bool>) -> some View {
@@ -842,7 +997,6 @@ struct SettingsView: View {
         }
     }
 }
-
 
 // MARK: - Dynamic App Icon Manager
 

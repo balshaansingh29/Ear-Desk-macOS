@@ -13,7 +13,6 @@ enum LinkState: Equatable {
     case failed(String)
 }
 
-
 struct MenuBarBatteryIconView: View {
     let batteryLevel: Double
     let iconName: String
@@ -76,16 +75,11 @@ final class EarbudsController: ObservableObject {
 
     private var lastMenuBarBatteryUpdate: Date?
     private var batteryTimer: Timer?
+
     // Auto-Connect & Notifications
     @Published var autoConnect: Bool = UserDefaults.standard.object(forKey: "autoConnectEnabled") != nil ? UserDefaults.standard.bool(forKey: "autoConnectEnabled") : true
-        // Menu Bar Only (Hide from Dock)
-        // Menu Bar Battery Percentage Text Display
-    @Published var showMenuBarBatteryPercentage: Bool = UserDefaults.standard.bool(forKey: "showMenuBarBatteryPercentage") {
-        didSet {
-            UserDefaults.standard.set(showMenuBarBatteryPercentage, forKey: "showMenuBarBatteryPercentage")
-        }
-    }
 
+    // Menu Bar Only (Hide from Dock)
     @Published var menuBarOnly: Bool = UserDefaults.standard.bool(forKey: "menuBarOnlyEnabled") {
         didSet {
             UserDefaults.standard.set(menuBarOnly, forKey: "menuBarOnlyEnabled")
@@ -93,7 +87,30 @@ final class EarbudsController: ObservableObject {
         }
     }
 
-    @Published var notifyLowBattery: Bool = UserDefaults.standard.object(forKey: "notifyLowBatteryEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyLowBatteryEnabled") : true
+    // Menu Bar Battery Percentage Text Display
+    @Published var showMenuBarBatteryPercentage: Bool = UserDefaults.standard.bool(forKey: "showMenuBarBatteryPercentage") {
+        didSet {
+            UserDefaults.standard.set(showMenuBarBatteryPercentage, forKey: "showMenuBarBatteryPercentage")
+        }
+    }
+
+    @Published var notifyConnection: Bool = UserDefaults.standard.object(forKey: "notifyConnectionEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyConnectionEnabled") : true {
+        didSet {
+            UserDefaults.standard.set(notifyConnection, forKey: "notifyConnectionEnabled")
+        }
+    }
+
+    @Published var notifyLowBattery: Bool = UserDefaults.standard.object(forKey: "notifyLowBatteryEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyLowBatteryEnabled") : true {
+        didSet {
+            UserDefaults.standard.set(notifyLowBattery, forKey: "notifyLowBatteryEnabled")
+        }
+    }
+
+    @Published var lowBatteryThreshold: Int = UserDefaults.standard.object(forKey: "lowBatteryThreshold") != nil ? UserDefaults.standard.integer(forKey: "lowBatteryThreshold") : 15 {
+        didSet {
+            UserDefaults.standard.set(lowBatteryThreshold, forKey: "lowBatteryThreshold")
+        }
+    }
 
     private var connectNotificationRef: IOBluetoothUserNotification?
     private var hasNotifiedLowBattery = false
@@ -104,6 +121,26 @@ final class EarbudsController: ObservableObject {
     private var parser = PacketParser()
     private var frames = FrameBuilder()
 
+    private func sendConnectionNotification() {
+        guard notifyConnection else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "\(deviceName.isEmpty ? "Earbuds" : deviceName) Connected"
+        content.body = "Ear-Desk is active. Ready to stream audio."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { _ in }
+    }
+
+    private func sendDisconnectionNotification() {
+        guard notifyConnection else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "\(deviceName.isEmpty ? "Earbuds" : deviceName) Disconnected"
+        content.body = "Audio device was disconnected."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request) { _ in }
+    }
+
     init() {
         transport.onOpen = { [weak self] in self?.didOpen() }
         transport.onData = { [weak self] bytes in self?.didReceive(bytes) }
@@ -113,6 +150,14 @@ final class EarbudsController: ObservableObject {
         setupAutoConnectObserver()
         requestNotificationPermission()
         applyActivationPolicy()
+
+        GlobalHotkeyManager.shared.onCycleANC = { [weak self] in
+            self?.cycleANC()
+        }
+        GlobalHotkeyManager.shared.onToggleLowLatency = { [weak self] in
+            guard let self = self else { return }
+            self.setLowLatency(!self.lowLatency)
+        }
     }
 
     func applyActivationPolicy() {
@@ -176,9 +221,11 @@ final class EarbudsController: ObservableObject {
     }
 
     func disconnect() {
+        let wasConnected = (link == .connected)
         stopBatteryTimer()
         transport.close()
         link = .idle
+        if wasConnected { sendDisconnectionNotification() }
         // Clean up session state so reconnection has a clean slate
         battery = BatteryInfo()
         dualDevices = []
@@ -190,6 +237,7 @@ final class EarbudsController: ObservableObject {
     private func didOpen() {
         link = .connected
         startBatteryTimer()
+        sendConnectionNotification()
         Task {
             await initDevice()
             // Second pass for dual connection to ensure list populates after initial query stabilizes
@@ -201,6 +249,7 @@ final class EarbudsController: ObservableObject {
     }
 
     private func didClose(_ message: String?) {
+        if link == .connected { sendDisconnectionNotification() }
         stopBatteryTimer()
         if let message { link = .failed(message) }
         else if link == .connected { link = .failed("The earbuds disconnected.") }
@@ -267,12 +316,20 @@ final class EarbudsController: ObservableObject {
         }
     }
 
+    func setNotifyConnection(_ enabled: Bool) {
+        notifyConnection = enabled
+    }
+
     func setNotifyLowBattery(_ enabled: Bool) {
         notifyLowBattery = enabled
         UserDefaults.standard.set(enabled, forKey: "notifyLowBatteryEnabled")
         if enabled {
             requestNotificationPermission()
         }
+    }
+
+    func setLowBatteryThreshold(_ threshold: Int) {
+        lowBatteryThreshold = threshold
     }
 
     private func requestNotificationPermission() {
@@ -302,18 +359,19 @@ final class EarbudsController: ObservableObject {
 
     private func checkLowBatteryNotifications(_ info: BatteryInfo) {
         guard notifyLowBattery else { return }
+        let limit = lowBatteryThreshold
         var lowCells: [String] = []
 
-        if let s = info.stereo, s.level <= 15 && !s.charging {
+        if let s = info.stereo, s.level <= limit && !s.charging {
             lowCells.append("Headphones (\(s.level)%)")
         } else {
-            if let l = info.left, l.level <= 15 && !l.charging {
+            if let l = info.left, l.level <= limit && !l.charging {
                 lowCells.append("Left Earbud (\(l.level)%)")
             }
-            if let r = info.right, r.level <= 15 && !r.charging {
+            if let r = info.right, r.level <= limit && !r.charging {
                 lowCells.append("Right Earbud (\(r.level)%)")
             }
-            if let c = info.caseCell, c.level <= 15 && !c.charging {
+            if let c = info.caseCell, c.level <= limit && !c.charging {
                 lowCells.append("Charging Case (\(c.level)%)")
             }
         }
@@ -322,7 +380,7 @@ final class EarbudsController: ObservableObject {
             hasNotifiedLowBattery = true
             let content = UNMutableNotificationContent()
             content.title = "Low Battery Alert"
-            content.body = "\(lowCells.joined(separator: ", ")) is running low on battery. Please charge your device."
+            content.body = "\(lowCells.joined(separator: ", ")) is running low on battery (\(limit)% or lower). Please charge your device."
             content.sound = .default
 
             let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
@@ -332,7 +390,7 @@ final class EarbudsController: ObservableObject {
                 }
             }
         } else if lowCells.isEmpty {
-            // Reset state if all levels are above 15% (e.g. charged)
+            // Reset state if all levels are above threshold (e.g. charged)
             hasNotifiedLowBattery = false
         }
     }
@@ -384,8 +442,11 @@ final class EarbudsController: ObservableObject {
         guard let level else { return }
         lastMenuBarBatteryUpdate = Date()
 
+        // Round battery level to 5% increments to avoid needless redrawing
+        let quantizedLevel = (level * 20.0).rounded() / 20.0
         let iconName = model?.systemIconName ?? "earbuds"
-        let iconView = MenuBarBatteryIconView(batteryLevel: level, iconName: iconName)
+        
+        let iconView = MenuBarBatteryIconView(batteryLevel: quantizedLevel, iconName: iconName)
         let renderer = ImageRenderer(content: iconView)
         renderer.scale = NSScreen.main?.backingScaleFactor ?? 2.0
         if let img = renderer.nsImage {
@@ -401,7 +462,7 @@ final class EarbudsController: ObservableObject {
     }
     private func send(_ message: (UInt16, [UInt8])) { send(message.0, message.1) }
 
-        var primaryBatteryPercentageString: String? {
+    var primaryBatteryPercentageString: String? {
         guard link == .connected else { return nil }
         if let s = battery.stereo { return "\(s.level)%" }
         if let l = battery.left, let r = battery.right { return "\(min(l.level, r.level))%" }
@@ -413,6 +474,21 @@ final class EarbudsController: ObservableObject {
     var isListeningMode: Bool {
         if case .listeningMode? = model?.eqStyle { return true }
         return false
+    }
+
+    func cycleANC() {
+        guard link == .connected else { return }
+        let next: ANCMode
+        switch anc {
+        case .high?, .mid?, .low?, .adaptive?:
+            next = (model?.anc?.contains(.transparency) ?? true) ? .transparency : .off
+        case .transparency?:
+            next = .off
+        case .off?, .none:
+            let hasAdaptive = model?.anc?.contains(.strengthAdaptive) == true
+            next = hasAdaptive ? .adaptive : .high
+        }
+        setANC(next)
     }
 
     func setANC(_ mode: ANCMode) {
@@ -521,7 +597,7 @@ final class EarbudsController: ObservableObject {
             }
         case Command.dualConnectionListResponse:
             let list = Messages.parseDualConnectionList(p)
-                        dualDevices = list
+            dualDevices = list
         case Command.dualConnectionPush:
             // Device connected / disconnected push notification
             refreshDualConnectionList()

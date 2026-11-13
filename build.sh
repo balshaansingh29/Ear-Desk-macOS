@@ -20,6 +20,10 @@ if [ -d Resources/Products ]; then
     mkdir -p "$APP/Contents/Resources/Products"
     cp Resources/Products/*.png "$APP/Contents/Resources/Products/"
 fi
+if [ -d Resources/Fonts ]; then
+    mkdir -p "$APP/Contents/Resources/Fonts"
+    cp Resources/Fonts/* "$APP/Contents/Resources/Fonts/"
+fi
 if [ -d Resources/AppIcons ]; then
     mkdir -p "$APP/Contents/Resources/AppIcons"
     cp Resources/AppIcons/*.png "$APP/Contents/Resources/AppIcons/"
@@ -37,7 +41,7 @@ if command -v python3 &>/dev/null; then
     python3 -c '
 import os, subprocess, time, glob
 
-dmg_path = "build/Ear-Desk-macOS-v1.7.0.dmg"
+dmg_path = "build/Ear-Desk-macOS-v1.8.0.dmg"
 temp_dmg = "build/temp_installer.dmg"
 vol_name = "Ear-Desk"
 src_app = "build/Ear-Desk.app"
@@ -137,3 +141,9 @@ if os.path.exists(temp_dmg): os.remove(temp_dmg)
 print("DMG build completed successfully with Light icon inside and out!")
 '
 fi
+# Also package release ZIP archive for portable use
+zip_path="build/Ear-Desk-macOS-v1.8.0.zip"
+rm -f "$zip_path"
+ditto -c -k --sequesterRsrc --keepParent "$APP" "$zip_path"
+echo "ZIP archive created at: $zip_path"
+

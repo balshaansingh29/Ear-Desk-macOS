@@ -50,6 +50,22 @@ Communicating directly over **Bluetooth Classic (RFCOMM)** with zero electron bl
 - 💥 **Segmented Ultra Bass Slider**: Dial in real hardware bass enhancement levels (Level 1–5).
 - 🌐 **Spatial Audio Simulation**: Choose between **Fixed**, **Head-Tracked**, **Concert**, and **Theatre** listening dimensions.
 
+### 🔠 Nothing Dot Matrix Typography (NDot 57)
+- 🔲 **Signature Dot-Matrix Typeface**: Authentic NDot-57 retro dot typography integrated across card headers, hero titles, and connected device badges.
+- ⚙️ **Customizable Appearance**: Convenient toggle in **Settings → Appearance & Theme** to switch between authentic Nothing Dot Matrix and Apple Monospaced typography.
+
+### ✨ Interactive Animated Onboarding Flow
+- 🚀 **First-Run Welcome & Setup**: Polished 4-step guided onboarding experience covering pairing instructions, low-battery warning preferences, and global shortcuts.
+- 💫 **Centered Hardware Animations**: Elegant, hardware-accelerated animated rotating glyph rings and spring transitions.
+
+### 🎁 "What's New" Post-Update Modal
+- 📢 **Instant Release Insights**: Automatic centered splash modal showcasing new features and improvements whenever Ear-Desk is updated.
+- 🔍 **Accessible Anytime**: Review release highlights anytime via the **What's New** button in Settings (⌘,).
+
+### 🎚️ Precision Low-Battery Alert Threshold
+- 🔋 **5%–40% Customizable Slider**: Granular 5% increment slider with live visual badge feedback to set your preferred low-battery alert trigger.
+- 🗂️ **Organized Settings Cards**: Restructured settings organized into 5 distinct Nothing OS styled modular cards.
+
 ### 🧪 Flat Liquid Glass Dynamic App Icons
 - 💎 **Adaptive macOS Icon Suite**: Handcrafted **Light**, **Dark**, **Clear Light**, **Clear Dark**, **Tinted Light**, and **Tinted Dark** icon styles.
 - 🔄 **Real-Time System Matrix Sync**: Adapts automatically with macOS Sequoia system appearance mode changes with zero lag.
@@ -81,12 +97,12 @@ Ear-Desk automatically detects and displays authentic hardware renders for:
 ### Option 1: Drag-and-Drop DMG (Recommended) 💿
 Download the latest pre-compiled installer from [GitHub Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/latest):
 
-1. Download **[`Ear-Desk-macOS-v1.7.0.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.7.0/Ear-Desk-macOS-v1.7.0.dmg)**.
+1. Download **[`Ear-Desk-macOS-v1.8.0.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.8.0/Ear-Desk-macOS-v1.8.0.dmg)**.
 2. Open the disk image and drag **`Ear-Desk.app`** into **`Applications`**.
 3. Launch **Ear-Desk** and approve the Bluetooth permission request when prompted.
 
 ### Option 2: Portable ZIP Archive 📁
-- Download **[`Ear-Desk-macOS-v1.7.0.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.7.0/Ear-Desk-macOS-v1.7.0.zip)**, unzip, and launch directly.
+- Download **[`Ear-Desk-macOS-v1.8.0.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.8.0/Ear-Desk-macOS-v1.8.0.zip)**, unzip, and launch directly.
 
 ---
 

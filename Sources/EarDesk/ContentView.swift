@@ -87,7 +87,49 @@ import EarDeskCore
 
 // MARK: - Nothing Design System
 
+@MainActor
+final class TypographyManager: ObservableObject {
+    static let shared = TypographyManager()
+
+    @Published var useDotMatrix: Bool = UserDefaults.standard.object(forKey: "use_dot_matrix_font") != nil ? UserDefaults.standard.bool(forKey: "use_dot_matrix_font") : true {
+        didSet {
+            UserDefaults.standard.set(useDotMatrix, forKey: "use_dot_matrix_font")
+        }
+    }
+
+    init() {
+        registerBundledFonts()
+    }
+
+    private func registerBundledFonts() {
+        // Look in bundle Resources/Fonts
+        if let fontURL = Bundle.main.url(forResource: "Ndot57-Regular", withExtension: "otf", subdirectory: "Fonts") ??
+                         Bundle.main.url(forResource: "Ndot57-Regular", withExtension: "otf") {
+            var err: Unmanaged<CFError>?
+            CTFontManagerRegisterFontsForURL(fontURL as CFURL, .process, &err)
+        }
+        // Fallback for dev / spm folder
+        let devURL = URL(fileURLWithPath: "Resources/Fonts/Ndot57-Regular.otf")
+        if FileManager.default.fileExists(atPath: devURL.path) {
+            var err: Unmanaged<CFError>?
+            CTFontManagerRegisterFontsForURL(devURL as CFURL, .process, &err)
+        }
+    }
+
+    func dotFont(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        if useDotMatrix {
+            return Font.custom("Ndot57Regular", size: size)
+        } else {
+            return Font.system(size: size, weight: weight, design: .monospaced)
+        }
+    }
+}
+
 enum NothingTheme {
+    @MainActor static func dotFont(_ size: CGFloat, weight: Font.Weight = .bold) -> Font {
+        TypographyManager.shared.dotFont(size: size, weight: weight)
+    }
+
     static let red = Color(red: 0.88, green: 0.12, blue: 0.12)
     static let bg = Color(red: 0.06, green: 0.06, blue: 0.07)
     static let surface = Color.white.opacity(0.04)
@@ -126,8 +168,14 @@ struct NothingToggleStyle: ToggleStyle {
 struct ContentView: View {
     @EnvironmentObject var ctl: EarbudsController
     @EnvironmentObject var updater: AppUpdater
-    @AppStorage("hasPromptedLaunchAtLogin") private var hasPromptedLaunchAtLogin: Bool = false
-    @State private var showPromptSheet: Bool = false
+    @AppStorage("hasCompletedOnboarding_v1") private var hasCompletedOnboarding: Bool = false
+    @AppStorage("lastSeenAppVersion") private var lastSeenAppVersion: String = ""
+    @State private var showOnboardingModal: Bool = false
+    @State private var showWhatsNewModal: Bool = false
+
+    private var currentAppVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.8.0"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -196,14 +244,69 @@ struct ContentView: View {
         .frame(minWidth: 460, idealWidth: 480, minHeight: 600)
         .background(NothingTheme.bg.ignoresSafeArea())
         .preferredColorScheme(.dark)
-        .sheet(isPresented: $showPromptSheet) {
-            LaunchAtLoginPromptView(onDismiss: {
-                showPromptSheet = false
-                hasPromptedLaunchAtLogin = true
-            })
-            .environmentObject(ctl)
-        }
         .overlay {
+            if showWhatsNewModal && !showOnboardingModal {
+                ZStack {
+                    Color.black.opacity(0.80)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+
+                    WhatsNewModal(version: currentAppVersion, onDismiss: {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            showWhatsNewModal = false
+                        }
+                        lastSeenAppVersion = currentAppVersion
+                    })
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.6), radius: 30, x: 0, y: 15)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.94)),
+                            removal: .opacity.combined(with: .scale(scale: 0.97))
+                        )
+                    )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .ignoresSafeArea()
+                .zIndex(150)
+            }
+
+            if showOnboardingModal {
+                ZStack {
+                    // Smooth dimming backdrop covering the whole window
+                    Color.black.opacity(0.80)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+
+                    OnboardingFlowView(onComplete: {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            showOnboardingModal = false
+                        }
+                        hasCompletedOnboarding = true
+                    })
+                    .environmentObject(ctl)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.6), radius: 30, x: 0, y: 15)
+                    .transition(
+                        .asymmetric(
+                            insertion: .opacity.combined(with: .scale(scale: 0.94)),
+                            removal: .opacity.combined(with: .scale(scale: 0.97))
+                        )
+                    )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .ignoresSafeArea()
+                .zIndex(100)
+            }
+
             let isUpdating: Bool = {
                 switch updater.status {
                 case .downloading, .installing, .readyToRestart:
@@ -223,13 +326,38 @@ struct ContentView: View {
                         .environmentObject(updater)
                 }
                 .transition(.opacity)
+                .zIndex(200)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ReopenOnboarding"))) { _ in
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                showOnboardingModal = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ReopenWhatsNew"))) { _ in
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                showWhatsNewModal = true
             }
         }
         .onAppear {
-            if !hasPromptedLaunchAtLogin {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                    if !hasPromptedLaunchAtLogin {
-                        showPromptSheet = true
+            if !hasCompletedOnboarding {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                    if !hasCompletedOnboarding {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            showOnboardingModal = true
+                        }
+                    }
+                }
+            } else {
+                // If onboarding already done and app version has incremented (user updated)
+                if lastSeenAppVersion.isEmpty {
+                    // First time version tracking is activated: record current version
+                    lastSeenAppVersion = currentAppVersion
+                } else if lastSeenAppVersion != currentAppVersion {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                            showWhatsNewModal = true
+                        }
                     }
                 }
             }
@@ -241,76 +369,495 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Launch At Login First-Time Popup
+// MARK: - Animated Onboarding Flow (First-Time Launch Experience)
 
-struct LaunchAtLoginPromptView: View {
-    @EnvironmentObject var ctl: EarbudsController
-    let onDismiss: () -> Void
+// Isolated rotating ring view so continuous animation does not conflict with step transitions
+private struct AnimatedGlyphRingView: View {
+    let systemImage: String
+    let iconSize: CGFloat
+    let accentDot: Bool
+
+    @State private var rotation: Double = 0
+    @State private var pulse: Bool = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            // Nothing Glyph aesthetic header icon
-            ZStack {
+        ZStack {
+            // Outer subtle circle
+            Circle()
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                .frame(width: 140, height: 140)
+
+            // Continuously rotating dashed glyph ring
+            Circle()
+                .strokeBorder(Color.white.opacity(0.20), style: StrokeStyle(lineWidth: 1.5, dash: [4, 8]))
+                .frame(width: 118, height: 118)
+                .rotationEffect(.degrees(rotation))
+
+            // Center pulsating disc
+            Circle()
+                .fill(Color.white.opacity(0.04))
+                .frame(width: 90, height: 90)
+                .scaleEffect(pulse ? 1.04 : 0.96)
+                .overlay(Circle().strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
+
+            Image(systemName: systemImage)
+                .font(.system(size: iconSize, weight: .ultraLight))
+                .foregroundStyle(.white)
+                .shadow(color: NothingTheme.red.opacity(pulse ? 0.5 : 0.15), radius: 10)
+
+            if accentDot {
                 Circle()
-                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                    .frame(width: 68, height: 68)
+                    .fill(NothingTheme.red)
+                    .frame(width: 8, height: 8)
+                    .offset(x: 46, y: -46)
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: 16.0).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
+    }
+}
+
+private struct AnimatedCompletionCheckView: View {
+    @State private var scale: CGFloat = 0.5
+    @State private var opacity: Double = 0.0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                .frame(width: 120, height: 120)
+
+            Circle()
+                .strokeBorder(NothingTheme.red, lineWidth: 2)
+                .frame(width: 90, height: 90)
+
+            Image(systemName: "checkmark")
+                .font(.system(size: 38, weight: .bold))
+                .foregroundStyle(Color.green)
+        }
+        .scaleEffect(scale)
+        .opacity(opacity)
+        .onAppear {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.65)) {
+                scale = 1.0
+                opacity = 1.0
+            }
+        }
+    }
+}
+
+struct OnboardingFlowView: View {
+    @EnvironmentObject var ctl: EarbudsController
+    let onComplete: () -> Void
+
+    @State private var currentStep: Int = 0
+
+    // Step configuration options
+    @State private var optLaunchAtLogin: Bool = true
+    @State private var optMenuBarOnly: Bool = false
+    @State private var optShowBatteryPercentage: Bool = true
+    @State private var optLowBatteryAlerts: Bool = true
+    @State private var optDotMatrixFont: Bool = TypographyManager.shared.useDotMatrix
+
+    private let totalSteps = 4
+
+    var body: some View {
+        ZStack {
+            NothingTheme.bg.ignoresSafeArea()
+
+            // Subtle background radial gradient
+            RadialGradient(
+                colors: [NothingTheme.red.opacity(0.10), Color.clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 360
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 0) {
+                // Top Progress Matrix Bar
+                topProgressBar
+                    .padding(.top, 24)
+                    .padding(.horizontal, 32)
+
+                Spacer(minLength: 8)
+
+                // Slide Content with explicit slide animation
+                Group {
+                    switch currentStep {
+                    case 0:
+                        welcomeStep
+                            .id(0)
+                    case 1:
+                        bluetoothPairingStep
+                            .id(1)
+                    case 2:
+                        setupPreferencesStep
+                            .id(2)
+                    default:
+                        completionStep
+                            .id(3)
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .offset(x: 20)),
+                    removal: .opacity.combined(with: .offset(x: -20))
+                ))
+                .frame(height: 405)
+
+                Spacer(minLength: 8)
+
+                // Bottom Action Footer
+                bottomFooter
+                    .padding(.horizontal, 32)
+                    .padding(.bottom, 24)
+            }
+        }
+        .frame(width: 530, height: 580)
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: - Top Progress Dots
+    private var topProgressBar: some View {
+        HStack {
+            HStack(spacing: 6) {
                 Circle()
-                    .strokeBorder(NothingTheme.red.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
-                    .frame(width: 54, height: 54)
-                Image(systemName: "sparkles")
-                    .font(.system(size: 24, weight: .light))
+                    .fill(NothingTheme.red)
+                    .frame(width: 6, height: 6)
+                Text("SETUP // 0\(currentStep + 1)")
+                    .font(TypographyManager.shared.dotFont(size: 11, weight: .bold))
+                    .tracking(2.0)
                     .foregroundStyle(.white)
             }
-            .padding(.top, 8)
 
-            VStack(spacing: 6) {
-                Text("START EAR-DESK AT LOGIN?")
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .tracking(1.5)
-                    .foregroundStyle(.white)
-                Text("Ear-Desk can live in your macOS menu bar and automatically monitor your Nothing & CMF audio gear whenever you start your Mac.")
-                    .font(.system(size: 11))
+            Spacer()
+
+            // Stepper capsules
+            HStack(spacing: 8) {
+                ForEach(0..<totalSteps, id: \.self) { idx in
+                    Capsule()
+                        .fill(idx <= currentStep ? (idx == currentStep ? NothingTheme.red : Color.white) : Color.white.opacity(0.15))
+                        .frame(width: idx == currentStep ? 24 : 8, height: 4)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentStep)
+                }
+            }
+        }
+    }
+
+    // MARK: - Step 1: Welcome Hero
+    private var welcomeStep: some View {
+        VStack(spacing: 20) {
+            AnimatedGlyphRingView(systemImage: "earbuds", iconSize: 42, accentDot: true)
+
+            VStack(spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("WELCOME TO")
+                        .font(TypographyManager.shared.dotFont(size: 17, weight: .bold))
+                        .tracking(3.0)
+                        .foregroundStyle(NothingTheme.textSecondary)
+                    Text("EAR-DESK")
+                        .font(TypographyManager.shared.dotFont(size: 19, weight: .bold))
+                        .tracking(3.5)
+                        .foregroundStyle(NothingTheme.red)
+                }
+
+                Text("The native, transparent companion designed for Nothing & CMF by Nothing audio gear on macOS.")
+                    .font(.system(size: 12))
+                    .lineSpacing(3)
                     .multilineTextAlignment(.center)
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .frame(maxWidth: 380)
+            }
+
+            // Highlights
+            HStack(spacing: 12) {
+                featureBadge(icon: "waveform.path", title: "Parametric EQ", desc: "Studio tuning")
+                featureBadge(icon: "shield.lefthalf.filled", title: "Smart ANC", desc: "Noise modes")
+                featureBadge(icon: "bolt.batteryblock.fill", title: "Battery Hub", desc: "Menu bar glance")
+            }
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 2: Bluetooth & Device Connection
+    private var bluetoothPairingStep: some View {
+        VStack(spacing: 14) {
+            AnimatedGlyphRingView(systemImage: "antenna.radiowaves.left.and.right", iconSize: 32, accentDot: false)
+
+            VStack(spacing: 4) {
+                Text("PAIRING & DISCOVERY")
+                    .font(TypographyManager.shared.dotFont(size: 16, weight: .bold))
+                    .tracking(2.5)
+                    .foregroundStyle(.white)
+
+                Text("How Ear-Desk connects to your earbuds:")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(NothingTheme.textSecondary)
+            }
+
+            VStack(alignment: .leading, spacing: 11) {
+                pairingTipRow(
+                    stepNum: "1",
+                    title: "Pair in macOS System Settings",
+                    subtitle: "Open System Settings → Bluetooth and pair your Ear / Ear (a) / CMF Buds."
+                )
+
+                pairingTipRow(
+                    stepNum: "2",
+                    title: "Native Direct Bluetooth RFCOMM",
+                    subtitle: "Ear-Desk talks directly to your hardware over standard Bluetooth serial, without internet required."
+                )
+
+                pairingTipRow(
+                    stepNum: "3",
+                    title: "Instant Model Detection",
+                    subtitle: "Ear-Desk automatically recognizes your model, fetches accurate product render art, and unlocks supported features."
+                )
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal, 20)
+    }
+
+    // MARK: - Step 3: Setup Preferences
+    private var setupPreferencesStep: some View {
+        VStack(spacing: 16) {
+            VStack(spacing: 4) {
+                Text("CUSTOMIZE YOUR WORKFLOW")
+                    .font(TypographyManager.shared.dotFont(size: 16, weight: .bold))
+                    .tracking(2.5)
+                    .foregroundStyle(.white)
+
+                Text("Pick initial settings. You can modify these anytime in Settings (⌘,).")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(NothingTheme.textSecondary)
+            }
+
+            VStack(spacing: 10) {
+                onboardingToggleRow(
+                    title: "Launch at Login",
+                    desc: "Start automatically with macOS to monitor battery and connection",
+                    isOn: $optLaunchAtLogin
+                )
+
+                onboardingToggleRow(
+                    title: "Show Battery % in Menu Bar",
+                    desc: "Glanceable real-time percentage directly in your macOS menu bar",
+                    isOn: $optShowBatteryPercentage
+                )
+
+                onboardingToggleRow(
+                    title: "Low Battery Desktop Alerts",
+                    desc: "Receive desktop notifications before your earbuds or case run out",
+                    isOn: $optLowBatteryAlerts
+                )
+
+                onboardingToggleRow(
+                    title: "Nothing Dot Matrix Typography",
+                    desc: "Enable authentic NDot 57 retro dot typography throughout headers",
+                    isOn: $optDotMatrixFont
+                )
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Step 4: Ready to Rock
+    private var completionStep: some View {
+        VStack(spacing: 22) {
+            AnimatedCompletionCheckView()
+
+            VStack(spacing: 8) {
+                Text("ALL READY TO GO")
+                    .font(TypographyManager.shared.dotFont(size: 18, weight: .bold))
+                    .tracking(3.0)
+                    .foregroundStyle(.white)
+
+                Text("Your preferences have been saved. Click below to start controlling your earbuds from the desktop.")
+                    .font(.system(size: 12))
+                    .lineSpacing(3)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .frame(maxWidth: 380)
+            }
+
+            // Shortcut Reminder Card
+            HStack(spacing: 16) {
+                shortcutBadge(keys: "⌃⌥A", action: "Cycle ANC")
+                shortcutBadge(keys: "⌃⌥L", action: "Game Mode")
+                shortcutBadge(keys: "⌘,", action: "Settings")
+            }
+            .padding(.top, 4)
+        }
+        .padding(.horizontal, 24)
+    }
+
+    // MARK: - Bottom Navigation Footer
+    private var bottomFooter: some View {
+        HStack {
+            if currentStep > 0 {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.28)) {
+                        currentStep -= 1
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 10, weight: .bold))
+                        Text("BACK")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.2)
+                    }
+                    .foregroundStyle(NothingTheme.textSecondary)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(Color.white.opacity(0.04), in: Capsule())
+                    .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+
+            if currentStep < totalSteps - 1 {
+                Button(action: {
+                    withAnimation(.easeInOut(duration: 0.28)) {
+                        currentStep += 1
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Text("CONTINUE")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 9)
+                    .background(Color.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else {
+                Button(action: {
+                    applyPreferences()
+                    onComplete()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("GET STARTED")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(NothingTheme.red, in: Capsule())
+                    .shadow(color: NothingTheme.red.opacity(0.4), radius: 6)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func applyPreferences() {
+        ctl.setLaunchAtLogin(optLaunchAtLogin)
+        ctl.setMenuBarBatteryPercentage(optShowBatteryPercentage)
+        ctl.setNotifyLowBattery(optLowBatteryAlerts)
+        TypographyManager.shared.useDotMatrix = optDotMatrixFont
+    }
+
+    private func featureBadge(icon: String, title: String, desc: String) -> some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .light))
+                .foregroundStyle(NothingTheme.red)
+            Text(title)
+                .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+                .foregroundStyle(.white)
+            Text(desc)
+                .font(.system(size: 9))
+                .foregroundStyle(NothingTheme.textTertiary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .padding(.horizontal, 8)
+        .background(Color.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 10))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.06), lineWidth: 1))
+    }
+
+    private func pairingTipRow(stepNum: String, title: String, subtitle: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(stepNum)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(NothingTheme.red)
+                .frame(width: 22, height: 22)
+                .background(NothingTheme.red.opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(subtitle)
+                    .font(.system(size: 10.5))
                     .lineSpacing(2)
                     .foregroundStyle(NothingTheme.textSecondary)
-                    .frame(maxWidth: 320)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-
-            HStack(spacing: 12) {
-                Button("NOT NOW") {
-                    onDismiss()
-                }
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .tracking(1.2)
-                .foregroundStyle(NothingTheme.textSecondary)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.04), in: Capsule())
-                .overlay(Capsule().strokeBorder(NothingTheme.border, lineWidth: 1))
-                .buttonStyle(.plain)
-
-                Button("ENABLE AT LOGIN") {
-                    ctl.setLaunchAtLogin(true)
-                    onDismiss()
-                }
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .tracking(1.2)
-                .foregroundStyle(.black)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 8)
-                .background(Color.white, in: Capsule())
-                .buttonStyle(.plain)
-            }
-            .padding(.bottom, 6)
+            Spacer()
         }
-        .padding(24)
-        .frame(width: 380)
-        .background(NothingTheme.bg)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .strokeBorder(NothingTheme.border, lineWidth: 1)
-        )
-        .preferredColorScheme(.dark)
+    }
+
+    private func onboardingToggleRow(title: String, desc: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                Text(desc)
+                    .font(.system(size: 10))
+                    .foregroundStyle(NothingTheme.textSecondary)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .toggleStyle(NothingToggleStyle())
+                .labelsHidden()
+        }
+    }
+
+    private func shortcutBadge(keys: String, action: String) -> some View {
+        VStack(spacing: 4) {
+            Text(keys)
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(NothingTheme.red)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+            Text(action)
+                .font(.system(size: 9.5, design: .monospaced))
+                .foregroundStyle(NothingTheme.textTertiary)
+        }
+        .frame(width: 90)
     }
 }
 
@@ -351,11 +898,11 @@ struct ConnectView: View {
                 VStack(spacing: 5) {
                     HStack(spacing: 6) {
                         Text("EAR")
-                            .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            .font(TypographyManager.shared.dotFont(size: TypographyManager.shared.useDotMatrix ? 24 : 22, weight: .bold))
                             .tracking(3)
                             .foregroundStyle(.white)
                         Text("(DESK)")
-                            .font(.system(size: 22, weight: .light, design: .monospaced))
+                            .font(TypographyManager.shared.dotFont(size: TypographyManager.shared.useDotMatrix ? 24 : 22, weight: .light))
                             .foregroundStyle(NothingTheme.red)
                     }
 
@@ -535,7 +1082,7 @@ struct ControlsView: View {
                 HStack(spacing: 8) {
                     PulsingStatusDot()
                     Text(ctl.deviceName.uppercased())
-                        .font(.system(size: 17, weight: .bold, design: .monospaced))
+                        .font(TypographyManager.shared.dotFont(size: TypographyManager.shared.useDotMatrix ? 19 : 17, weight: .bold))
                         .tracking(1.5)
                         .foregroundStyle(.white)
                 }
@@ -590,6 +1137,7 @@ struct Card<Content: View>: View {
     var icon: String? = nil
     @ViewBuilder var content: Content
 
+    @ObservedObject private var typoManager = TypographyManager.shared
     @State private var isHovered = false
 
     var body: some View {
@@ -601,7 +1149,7 @@ struct Card<Content: View>: View {
                     .scaleEffect(isHovered ? 1.25 : 1.0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHovered)
                 Text(title.uppercased())
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(typoManager.dotFont(size: typoManager.useDotMatrix ? 13 : 11, weight: .bold))
                     .tracking(1.8)
                     .foregroundStyle(isHovered ? Color.white : NothingTheme.textSecondary)
             }
@@ -859,6 +1407,44 @@ struct ANCSection: View {
 
 // MARK: - EQ Section
 
+struct EQBarView: View {
+    let index: Int
+    let targetRatio: CGFloat
+    let maxHeight: CGFloat
+    let barWidth: CGFloat
+    
+    @State private var pulse: CGFloat = 0.0
+
+    var body: some View {
+        let harmonicFactor = CGFloat(sin(Double(index) * 0.55))
+        let jitter = harmonicFactor * 0.08 * pulse
+        let computedHeight = max(4.0, min(maxHeight, (targetRatio + jitter) * maxHeight))
+
+        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [
+                        NothingTheme.red,
+                        NothingTheme.red.opacity(0.85),
+                        Color.white.opacity(0.4)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .frame(width: barWidth, height: computedHeight)
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: targetRatio)
+            .onAppear {
+                withAnimation(
+                    .easeInOut(duration: 0.75 + Double(index % 5) * 0.15)
+                    .repeatForever(autoreverses: true)
+                ) {
+                    pulse = 1.0
+                }
+            }
+    }
+}
+
 struct EQVisualizerView: View {
     let presetName: String
     var customEQ: CustomEQ? = nil
@@ -866,11 +1452,9 @@ struct EQVisualizerView: View {
     // 16-band spectrum waveform
     private var barHeights: [CGFloat] {
         if presetName.lowercased() == "custom", let c = customEQ {
-            // Modulate 16 bands based on Bass (bands 0..4), Mid (bands 5..10), Treble (bands 11..15)
-            // Values are between -6 and +6 dB -> mapped into offset factors
-            let bFactor = CGFloat(c.bass) / 12.0      // -0.5 ... +0.5
-            let mFactor = CGFloat(c.mid) / 12.0       // -0.5 ... +0.5
-            let tFactor = CGFloat(c.treble) / 12.0    // -0.5 ... +0.5
+            let bFactor = CGFloat(c.bass) / 12.0
+            let mFactor = CGFloat(c.mid) / 12.0
+            let tFactor = CGFloat(c.treble) / 12.0
 
             let base: [CGFloat] = [
                 0.50, 0.48, 0.46, 0.45, 0.46,
@@ -922,38 +1506,22 @@ struct EQVisualizerView: View {
         }
     }
 
-    @State private var animPhase = false
-
     var body: some View {
         GeometryReader { geo in
             let totalWidth = geo.size.width
             let count = barHeights.count
             let spacing: CGFloat = 2.5
             let barW = max(2.5, (totalWidth - (CGFloat(count - 1) * spacing)) / CGFloat(count))
+            let usableHeight = max(10, geo.size.height - 4)
 
             HStack(alignment: .bottom, spacing: spacing) {
                 ForEach(0..<count, id: \.self) { i in
-                    let harmonicFactor = CGFloat(sin(Double(i) * 0.5 + (animPhase ? 1.5 : 0.0)))
-                    let jitter: CGFloat = harmonicFactor * 0.07
-                    let barHeight = max(4.0, (barHeights[i] + jitter) * (geo.size.height - 4))
-
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    NothingTheme.red,
-                                    NothingTheme.red.opacity(0.8),
-                                    Color.white.opacity(0.4)
-                                ],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(width: barW, height: barHeight)
-                        .animation(
-                            .easeInOut(duration: 0.65 + Double(i % 4) * 0.12).repeatForever(autoreverses: true),
-                            value: animPhase
-                        )
+                    EQBarView(
+                        index: i,
+                        targetRatio: barHeights[i],
+                        maxHeight: usableHeight,
+                        barWidth: barW
+                    )
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
@@ -968,22 +1536,24 @@ struct EQVisualizerView: View {
                         .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
                 )
         )
-        .onAppear { animPhase = true }
     }
 }
 
 // MARK: - Custom EQ Modal Sheet
 
 struct CustomEQSheet: View {
+    @ObservedObject var profileManager = EQProfileManager.shared
     @EnvironmentObject var ctl: EarbudsController
     @Binding var isPresented: Bool
 
     @State private var bass: Double = 0
     @State private var mid: Double = 0
     @State private var treble: Double = 0
+    @State private var showSaveAlert: Bool = false
+    @State private var newProfileName: String = ""
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 16) {
             // Header
             HStack(alignment: .center) {
                 HStack(spacing: 8) {
@@ -1015,6 +1585,40 @@ struct CustomEQSheet: View {
             EQVisualizerView(presetName: "custom", customEQ: CustomEQ(bass: Int(bass), mid: Int(mid), treble: Int(treble)))
                 .frame(height: 70)
 
+            // Saved Profiles Horizontal Chips Bar
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("SAVED PROFILES")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(NothingTheme.textTertiary)
+                    Spacer()
+                    Button {
+                        newProfileName = ""
+                        showSaveAlert = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "plus")
+                                .font(.system(size: 8, weight: .bold))
+                            Text("SAVE CURRENT")
+                                .font(.system(size: 8.5, weight: .bold, design: .monospaced))
+                                .tracking(0.8)
+                        }
+                        .foregroundStyle(NothingTheme.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(profileManager.profiles) { p in
+                            profileChip(p)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+
             // 3 Vertical/Horizontal Band Tuning Sliders
             HStack(spacing: 16) {
                 BandSlider(title: "BASS", subtitle: "140 Hz", value: $bass) {
@@ -1027,10 +1631,10 @@ struct CustomEQSheet: View {
                     applyBands()
                 }
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 4)
 
             // Footer controls
-            HStack {
+            HStack(spacing: 8) {
                 Button {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         bass = 0
@@ -1039,14 +1643,14 @@ struct CustomEQSheet: View {
                     }
                     applyBands()
                 } label: {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         Image(systemName: "arrow.counterclockwise")
-                            .font(.system(size: 10))
+                            .font(.system(size: 9))
                         Text("RESET FLAT")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .tracking(1.0)
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .tracking(0.8)
                     }
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .foregroundStyle(NothingTheme.textSecondary)
                     .background(Color.white.opacity(0.04), in: Capsule())
@@ -1065,7 +1669,7 @@ struct CustomEQSheet: View {
                         .font(.system(size: 10, weight: .bold, design: .monospaced))
                         .tracking(1.2)
                         .foregroundStyle(.black)
-                        .padding(.horizontal, 18)
+                        .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(Color.white, in: Capsule())
                 }
@@ -1073,7 +1677,7 @@ struct CustomEQSheet: View {
             }
         }
         .padding(22)
-        .frame(width: 360)
+        .frame(width: 380)
         .background(NothingTheme.bg)
         .overlay(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -1085,12 +1689,86 @@ struct CustomEQSheet: View {
             treble = Double(ctl.customEQ.treble)
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showSaveAlert) {
+            VStack(spacing: 16) {
+                Text("Save EQ Profile")
+                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                TextField("Profile Name (e.g. Acoustic Warmth)", text: $newProfileName)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 240)
+                HStack(spacing: 12) {
+                    Button("Cancel") {
+                        showSaveAlert = false
+                        newProfileName = ""
+                    }
+                    Button("Save") {
+                        let trimmed = newProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            profileManager.addProfile(name: trimmed, bass: Int(bass), mid: Int(mid), treble: Int(treble))
+                        }
+                        showSaveAlert = false
+                        newProfileName = ""
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(newProfileName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+            .padding(22)
+            .background(NothingTheme.bg)
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    private func isCurrentProfile(_ p: EQProfile) -> Bool {
+        return Int(bass) == p.bass && Int(mid) == p.mid && Int(treble) == p.treble
+    }
+
+    @ViewBuilder
+    private func profileChip(_ p: EQProfile) -> some View {
+        let isSelected = isCurrentProfile(p)
+        HStack(spacing: 5) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    bass = Double(p.bass)
+                    mid = Double(p.mid)
+                    treble = Double(p.treble)
+                }
+                applyBands()
+            } label: {
+                HStack(spacing: 4) {
+                    if isSelected {
+                        Circle()
+                            .fill(NothingTheme.red)
+                            .frame(width: 4, height: 4)
+                    }
+                    Text(p.name)
+                        .font(.system(size: 9, weight: isSelected ? .bold : .medium, design: .monospaced))
+                }
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                profileManager.deleteProfile(id: p.id)
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 7, weight: .bold))
+                    .foregroundStyle(NothingTheme.textTertiary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .foregroundStyle(isSelected ? Color.white : NothingTheme.textSecondary)
+        .background(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.04), in: Capsule())
+        .overlay(Capsule().strokeBorder(isSelected ? Color.white.opacity(0.3) : NothingTheme.borderSubtle, lineWidth: 1))
     }
 
     private func applyBands() {
         ctl.setCustomEQBands(bass: Int(bass), mid: Int(mid), treble: Int(treble))
     }
 }
+
 
 struct BandSlider: View {
     let title: String
@@ -1666,6 +2344,180 @@ struct DualConnectionSection: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(NothingTheme.borderSubtle, lineWidth: 1)
         )
+    }
+}
+
+// MARK: - What's New Modal (Post-Update Experience)
+
+struct WhatsNewItem: Identifiable {
+    let id = UUID()
+    let icon: String
+    let tag: String
+    let title: String
+    let description: String
+}
+
+struct WhatsNewModal: View {
+    let version: String
+    let onDismiss: () -> Void
+
+    @State private var pulse: Bool = false
+
+    private let changes: [WhatsNewItem] = [
+        WhatsNewItem(
+            icon: "textformat",
+            tag: "TYPOGRAPHY",
+            title: "Nothing Dot Matrix Font (NDot 57)",
+            description: "Signature retro dot-matrix typeface now available across titles, headers, and cards. Toggleable in Settings."
+        ),
+        WhatsNewItem(
+            icon: "sparkles",
+            tag: "ONBOARDING",
+            title: "Animated Guided Setup Experience",
+            description: "Interactive setup flow covering pairing, menu bar battery glance, and shortcuts. Replayable anytime in Settings."
+        ),
+        WhatsNewItem(
+            icon: "waveform",
+            tag: "AUDIO CORE",
+            title: "Fluid EQ Visualizer Waveform",
+            description: "Independent multi-phase physics bars that dynamically react and smoothly animate between sound profiles."
+        ),
+        WhatsNewItem(
+            icon: "battery.50",
+            tag: "SETTINGS",
+            title: "Flexible Battery Threshold Slider",
+            description: "Slider from 5% to 40% with live percentage badges and reorganized card settings."
+        )
+    ]
+
+    var body: some View {
+        ZStack {
+            NothingTheme.bg.ignoresSafeArea()
+
+            RadialGradient(
+                colors: [NothingTheme.red.opacity(0.12), Color.clear],
+                center: .top,
+                startRadius: 20,
+                endRadius: 360
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 20) {
+                // Header Hero
+                HStack(alignment: .center, spacing: 14) {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            .frame(width: 50, height: 50)
+                        Circle()
+                            .fill(NothingTheme.red.opacity(0.18))
+                            .frame(width: 38, height: 38)
+                            .scaleEffect(pulse ? 1.06 : 0.94)
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 20, weight: .light))
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text("WHAT'S NEW")
+                                .font(TypographyManager.shared.dotFont(size: 16, weight: .bold))
+                                .tracking(2.5)
+                                .foregroundStyle(.white)
+
+                            Text("v\(version)")
+                                .font(TypographyManager.shared.dotFont(size: 13, weight: .bold))
+                                .foregroundStyle(NothingTheme.red)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(NothingTheme.red.opacity(0.15), in: Capsule())
+                        }
+
+                        Text("EAR-DESK // UPDATED SUCCESSFULLY")
+                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .tracking(1.5)
+                            .foregroundStyle(NothingTheme.textTertiary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.top, 24)
+                .padding(.horizontal, 28)
+
+                Divider()
+                    .padding(.horizontal, 28)
+
+                // Feature Highlights List
+                VStack(spacing: 12) {
+                    ForEach(changes) { item in
+                        HStack(alignment: .top, spacing: 14) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.white.opacity(0.04))
+                                    .frame(width: 36, height: 36)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                                    )
+                                Image(systemName: item.icon)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundStyle(NothingTheme.red)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(item.tag)
+                                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                        .tracking(1.2)
+                                        .foregroundStyle(NothingTheme.red)
+                                    Text(item.title)
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                }
+
+                                Text(item.description)
+                                    .font(.system(size: 11))
+                                    .lineSpacing(2)
+                                    .foregroundStyle(NothingTheme.textSecondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            Spacer(minLength: 0)
+                        }
+                        .padding(10)
+                        .background(Color.white.opacity(0.02), in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                .padding(.horizontal, 28)
+
+                Spacer(minLength: 4)
+
+                // Bottom Continue Button
+                Button(action: onDismiss) {
+                    HStack(spacing: 6) {
+                        Text("CONTINUE")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .tracking(1.5)
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 10, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(.black)
+                    .padding(.vertical, 11)
+                    .background(Color.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 24)
+            }
+        }
+        .frame(width: 480, height: 500)
+        .preferredColorScheme(.dark)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: true)) {
+                pulse = true
+            }
+        }
     }
 }
 
