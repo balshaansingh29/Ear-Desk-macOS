@@ -54,7 +54,8 @@ Communicating directly over **Bluetooth Classic (RFCOMM)** with zero electron bl
 - 💎 **Adaptive macOS Icon Suite**: Handcrafted **Light**, **Dark**, **Clear Light**, **Clear Dark**, **Tinted Light**, and **Tinted Dark** icon styles.
 - 🔄 **Real-Time System Matrix Sync**: Adapts automatically with macOS Sequoia system appearance mode changes with zero lag.
 
-### 🚀 Additional Smart Tools
+### 🚀 In-App Auto-Updates & Smart Tools
+- 🔄 **One-Click In-App Auto-Updates**: Automatic background checks on launch notify you when a new release is available. Download, verify, and restart directly in-app with live reactive progress bars—no browser downloads or manual installs needed.
 - ⚡ **Auto-Connect**: Detects when your earbuds pair to macOS and automatically initializes the control link.
 - 🔔 **Low Battery Desktop Notifications**: Native alerts when battery level drops below 15%.
 - 🎯 **Find My Earbuds**: Acoustic chirping alarm to quickly locate misplaced earbuds around your desk.
@@ -80,12 +81,12 @@ Ear-Desk automatically detects and displays authentic hardware renders for:
 ### Option 1: Drag-and-Drop DMG (Recommended) 💿
 Download the latest pre-compiled installer from [GitHub Releases](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/latest):
 
-1. Download **[`Ear-Desk-macOS-v1.6.1.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.6.1/Ear-Desk-macOS-v1.6.1.dmg)**.
+1. Download **[`Ear-Desk-macOS-v1.7.0.dmg`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.7.0/Ear-Desk-macOS-v1.7.0.dmg)**.
 2. Open the disk image and drag **`Ear-Desk.app`** into **`Applications`**.
 3. Launch **Ear-Desk** and approve the Bluetooth permission request when prompted.
 
 ### Option 2: Portable ZIP Archive 📁
-- Download **[`Ear-Desk-macOS-v1.6.1.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.6.1/Ear-Desk-macOS-v1.6.1.zip)**, unzip, and launch directly.
+- Download **[`Ear-Desk-macOS-v1.7.0.zip`](https://github.com/balshaansingh29/Ear-Desk-macOS/releases/download/v1.7.0/Ear-Desk-macOS-v1.7.0.zip)**, unzip, and launch directly.
 
 ---
 

@@ -37,7 +37,7 @@ if command -v python3 &>/dev/null; then
     python3 -c '
 import os, subprocess, time, glob
 
-dmg_path = "build/Ear-Desk-macOS-v1.6.1.dmg"
+dmg_path = "build/Ear-Desk-macOS-v1.7.0.dmg"
 temp_dmg = "build/temp_installer.dmg"
 vol_name = "Ear-Desk"
 src_app = "build/Ear-Desk.app"

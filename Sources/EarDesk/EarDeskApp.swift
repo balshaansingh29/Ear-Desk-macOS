@@ -11,6 +11,7 @@ struct EarDeskApp: App {
     var body: some Scene {
         WindowGroup("Ear-Desk") {
             ContentView()
+                .background(WindowAccessor())
                 .environmentObject(controller)
                 .environmentObject(updater)
                 .environmentObject(iconManager)
@@ -37,16 +38,23 @@ struct EarDeskApp: App {
         }
 
         MenuBarExtra {
-            MenuContent()
+            MenuBarPopoverView()
                 .environmentObject(controller)
                 .environmentObject(updater)
         } label: {
-            if let image = controller.menuBarIcon {
-                Image(nsImage: image)
-            } else {
-                Image(systemName: controller.model?.systemIconName ?? "earbuds")
+            HStack(spacing: 4) {
+                if let image = controller.menuBarIcon {
+                    Image(nsImage: image)
+                } else {
+                    Image(systemName: controller.model?.systemIconName ?? "earbuds")
+                }
+                if controller.showMenuBarBatteryPercentage, let pct = controller.primaryBatteryPercentageString {
+                    Text(pct)
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                }
             }
         }
+        .menuBarExtraStyle(.window)
     }
 }
 
@@ -56,15 +64,14 @@ struct MenuContent: View {
     @ObservedObject var iconManager = AppIconManager.shared
 
     private func bringAppToFront() {
-        // Bring macOS app process to the front
-        NSApp.setActivationPolicy(.regular)
+        // If dock icon is hidden, keep accessory or switch to regular temporarily to activate window
         NSApp.activate(ignoringOtherApps: true)
 
         DispatchQueue.main.async {
             // Find existing main window without spawning a new one
             for window in NSApp.windows {
                 let className = window.className
-                if className.contains("StatusBarWindow") || className.contains("MenuBarExtra") {
+                if className.contains("StatusBarWindow") || className.contains("MenuBarExtra") || className.contains("NSStatusBar") {
                     continue
                 }
                 // Unminimize if minimized and bring to front
@@ -269,6 +276,8 @@ struct MenuContent: View {
 
         Divider()
         Toggle("Launch at Login", isOn: Binding(get: { ctl.launchAtLogin }, set: ctl.setLaunchAtLogin))
+        Toggle("Hide Dock Icon (Menu Bar Only)", isOn: Binding(get: { ctl.menuBarOnly }, set: ctl.setMenuBarOnly))
+        Toggle("Show Battery Percentage in Menu Bar", isOn: Binding(get: { ctl.showMenuBarBatteryPercentage }, set: ctl.setMenuBarBatteryPercentage))
 
         if case .updateAvailable(let ver, _, _) = updater.status {
             Divider()
@@ -283,6 +292,280 @@ struct MenuContent: View {
     }
 }
 
+
+// MARK: - Interactive Menu Bar Popover View (Option 6)
+
+struct MenuBarPopoverView: View {
+    @EnvironmentObject var ctl: EarbudsController
+    @EnvironmentObject var updater: AppUpdater
+    @ObservedObject var iconManager = AppIconManager.shared
+
+    private func bringAppToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async {
+            for window in NSApp.windows {
+                let className = window.className
+                if className.contains("StatusBarWindow") || className.contains("MenuBarExtra") || className.contains("NSStatusBar") {
+                    continue
+                }
+                if window.isMiniaturized {
+                    window.deminiaturize(nil)
+                }
+                window.setIsVisible(true)
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+                return
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            // Header: Status dot, Device Name & Quick Action Icons
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(ctl.link == .connected ? Color.green : NothingTheme.red)
+                    .frame(width: 7, height: 7)
+
+                Text(ctl.link == .connected ? ctl.deviceName.uppercased() : "EAR-DESK")
+                    .font(.system(size: 11.5, weight: .bold, design: .monospaced))
+                    .tracking(1.2)
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Button {
+                        bringAppToFront()
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(NothingTheme.textSecondary)
+                            .padding(5)
+                            .background(Color.white.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open Full App Window")
+
+                    Button {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(NothingTheme.textSecondary)
+                            .padding(5)
+                            .background(Color.white.opacity(0.06), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("Settings (⌘,)")
+                }
+            }
+
+            if ctl.link == .connected {
+                // Interactive Battery Mini Cards
+                HStack(spacing: 6) {
+                    if let s = ctl.battery.stereo {
+                        batteryPill(label: "HEADPHONES", level: s.level, charging: s.charging, icon: ctl.model?.systemIconName ?? "headphones")
+                    } else {
+                        if let l = ctl.battery.left {
+                            batteryPill(label: "L", level: l.level, charging: l.charging, icon: "earbuds")
+                        }
+                        if let r = ctl.battery.right {
+                            batteryPill(label: "R", level: r.level, charging: r.charging, icon: "earbuds")
+                        }
+                        if let c = ctl.battery.caseCell {
+                            batteryPill(label: "CASE", level: c.level, charging: c.charging, icon: "earbuds.case")
+                        }
+                    }
+                }
+
+                // Interactive ANC Segmented Control Bar
+                if ctl.model?.hasANC ?? true {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("NOISE CONTROL")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .tracking(1.0)
+                            .foregroundStyle(NothingTheme.textSecondary)
+
+                        let hasAdaptive = ctl.model?.anc?.contains(.strengthAdaptive) == true
+                        let activeANC = ctl.anc
+
+                        HStack(spacing: 4) {
+                            ancButton(
+                                title: hasAdaptive ? "Adaptive" : "Noise Cancelling",
+                                systemIcon: "earbuds.noise.cancelling",
+                                isSelected: activeANC == .high || activeANC == .adaptive
+                            ) {
+                                ctl.setANC(hasAdaptive ? .adaptive : .high)
+                            }
+
+                            if ctl.model?.anc?.contains(.transparency) ?? true {
+                                ancButton(
+                                    title: "Transparency",
+                                    systemIcon: "earbuds.noise.cancelling",
+                                    isSelected: activeANC == .transparency
+                                ) {
+                                    ctl.setANC(.transparency)
+                                }
+                            }
+
+                            ancButton(
+                                title: "Off",
+                                systemIcon: "slash.circle",
+                                isSelected: activeANC == .off
+                            ) {
+                                ctl.setANC(.off)
+                            }
+                        }
+                    }
+                }
+
+                // Bass & Spatial Audio Row
+                HStack(spacing: 8) {
+                    if ctl.model?.supportsBassEnhance ?? false {
+                        Button {
+                            ctl.setBass(enabled: !ctl.bassEnabled, level: ctl.bassLevel == 0 ? 3 : ctl.bassLevel)
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "waveform")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(ctl.bassEnabled ? "Bass L\(ctl.bassLevel)" : "Bass Off")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundStyle(ctl.bassEnabled ? Color.white : NothingTheme.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(ctl.bassEnabled ? NothingTheme.red : Color.white.opacity(0.06), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    if let modes = ctl.model?.supportedSpatialModes, !modes.isEmpty {
+                        Menu {
+                            ForEach(modes) { mode in
+                                Button(mode.title) {
+                                    ctl.setSpatialAudio(mode)
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "beats.headphones")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(ctl.spatialAudio.title.uppercased())
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            }
+                            .foregroundStyle(ctl.spatialAudio != .off ? Color.white : NothingTheme.textSecondary)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(ctl.spatialAudio != .off ? Color.white.opacity(0.18) : Color.white.opacity(0.06), in: Capsule())
+                        }
+                        .menuStyle(.borderlessButton)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        ctl.disconnect()
+                    } label: {
+                        Text("DISCONNECT")
+                            .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                            .tracking(1.0)
+                            .foregroundStyle(NothingTheme.textSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color.white.opacity(0.05), in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            } else {
+                // Not Connected State
+                VStack(spacing: 10) {
+                    Text("No Earbuds Connected")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(NothingTheme.textSecondary)
+                        .padding(.vertical, 6)
+
+                    Button {
+                        bringAppToFront()
+                    } label: {
+                        Text("CONNECT IN FULL APP")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                            .tracking(1.0)
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(Color.white, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .frame(maxWidth: .infinity)
+            }
+
+            Divider()
+                .overlay(Color.white.opacity(0.08))
+
+            // Footer actions: Preferences, Menu Bar Only & Quit
+            HStack {
+                Toggle("Menu Bar Only", isOn: Binding(get: { ctl.menuBarOnly }, set: ctl.setMenuBarOnly))
+                    .font(.system(size: 10, weight: .medium))
+                    .toggleStyle(.checkbox)
+
+                Spacer()
+
+                Button("Quit") {
+                    NSApplication.shared.terminate(nil)
+                }
+                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
+                .foregroundStyle(NothingTheme.textSecondary)
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(14)
+        .frame(width: 320)
+        .background(Color(red: 16/255, green: 16/255, blue: 18/255))
+        .preferredColorScheme(.dark)
+    }
+
+    @ViewBuilder
+    private func batteryPill(label: String, level: Int, charging: Bool, icon: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 9))
+                .foregroundStyle(charging ? Color.green : NothingTheme.textSecondary)
+
+            Text("\(label):")
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .foregroundStyle(NothingTheme.textSecondary)
+
+            Text("\(level)%\(charging ? "⚡" : "")")
+                .font(.system(size: 9.5, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    @ViewBuilder
+    private func ancButton(title: String, systemIcon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: systemIcon)
+                    .font(.system(size: 9))
+                Text(title)
+                    .font(.system(size: 9.5, weight: isSelected ? .bold : .medium, design: .monospaced))
+            }
+            .foregroundStyle(isSelected ? .black : .white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(isSelected ? Color.white : Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 // MARK: - App Settings View (Cmd + ,)
 
 struct SettingsView: View {
@@ -291,11 +574,11 @@ struct SettingsView: View {
     @ObservedObject var iconManager = AppIconManager.shared
 
     private var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.6.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.7.0"
     }
 
     private var buildNumber: String {
-        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "6"
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "7"
     }
 
     var body: some View {
@@ -345,6 +628,24 @@ struct SettingsView: View {
                     isOn: Binding(
                         get: { ctl.notifyLowBattery },
                         set: { ctl.setNotifyLowBattery($0) }
+                    )
+                )
+
+                settingToggle(
+                    title: "Menu Bar Only (Hide Dock Icon)",
+                    subtitle: "Hide the app from the macOS Dock and Cmd+Tab switcher; run exclusively from the menu bar",
+                    isOn: Binding(
+                        get: { ctl.menuBarOnly },
+                        set: { ctl.setMenuBarOnly($0) }
+                    )
+                )
+
+                settingToggle(
+                    title: "Show Battery Percentage in Menu Bar",
+                    subtitle: "Display exact numerical battery percentage alongside the menu bar icon",
+                    isOn: Binding(
+                        get: { ctl.showMenuBarBatteryPercentage },
+                        set: { ctl.setMenuBarBatteryPercentage($0) }
                     )
                 )
 
@@ -750,4 +1051,31 @@ public final class AppIconManager: ObservableObject {
         // 3. Fallback: check standard app icon
         return NSImage(named: NSImage.applicationIconName)
     }
+}
+
+
+// MARK: - Window Delegate to Hide on Close Instead of Quitting or Destroying
+final class MainWindowDelegate: NSObject, NSWindowDelegate {
+    static let shared = MainWindowDelegate()
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        // If user closes window, order it out to hide it into menu bar cleanly
+        sender.orderOut(nil)
+        return false
+    }
+}
+
+struct WindowAccessor: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.delegate = MainWindowDelegate.shared
+                window.isReleasedWhenClosed = false
+            }
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
 }

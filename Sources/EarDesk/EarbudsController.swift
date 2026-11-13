@@ -78,6 +78,21 @@ final class EarbudsController: ObservableObject {
     private var batteryTimer: Timer?
     // Auto-Connect & Notifications
     @Published var autoConnect: Bool = UserDefaults.standard.object(forKey: "autoConnectEnabled") != nil ? UserDefaults.standard.bool(forKey: "autoConnectEnabled") : true
+        // Menu Bar Only (Hide from Dock)
+        // Menu Bar Battery Percentage Text Display
+    @Published var showMenuBarBatteryPercentage: Bool = UserDefaults.standard.bool(forKey: "showMenuBarBatteryPercentage") {
+        didSet {
+            UserDefaults.standard.set(showMenuBarBatteryPercentage, forKey: "showMenuBarBatteryPercentage")
+        }
+    }
+
+    @Published var menuBarOnly: Bool = UserDefaults.standard.bool(forKey: "menuBarOnlyEnabled") {
+        didSet {
+            UserDefaults.standard.set(menuBarOnly, forKey: "menuBarOnlyEnabled")
+            applyActivationPolicy()
+        }
+    }
+
     @Published var notifyLowBattery: Bool = UserDefaults.standard.object(forKey: "notifyLowBatteryEnabled") != nil ? UserDefaults.standard.bool(forKey: "notifyLowBatteryEnabled") : true
 
     private var connectNotificationRef: IOBluetoothUserNotification?
@@ -97,6 +112,25 @@ final class EarbudsController: ObservableObject {
         refreshDevices()
         setupAutoConnectObserver()
         requestNotificationPermission()
+        applyActivationPolicy()
+    }
+
+    func applyActivationPolicy() {
+        DispatchQueue.main.async {
+            if self.menuBarOnly {
+                NSApp.setActivationPolicy(.accessory)
+            } else {
+                NSApp.setActivationPolicy(.regular)
+            }
+        }
+    }
+
+    func setMenuBarBatteryPercentage(_ enabled: Bool) {
+        showMenuBarBatteryPercentage = enabled
+    }
+
+    func setMenuBarOnly(_ enabled: Bool) {
+        menuBarOnly = enabled
     }
 
     // MARK: - Persistence for Custom EQ
@@ -366,6 +400,15 @@ final class EarbudsController: ObservableObject {
         transport.write(frames.build(command, payload: payload))
     }
     private func send(_ message: (UInt16, [UInt8])) { send(message.0, message.1) }
+
+        var primaryBatteryPercentageString: String? {
+        guard link == .connected else { return nil }
+        if let s = battery.stereo { return "\(s.level)%" }
+        if let l = battery.left, let r = battery.right { return "\(min(l.level, r.level))%" }
+        if let l = battery.left { return "\(l.level)%" }
+        if let r = battery.right { return "\(r.level)%" }
+        return nil
+    }
 
     var isListeningMode: Bool {
         if case .listeningMode? = model?.eqStyle { return true }
